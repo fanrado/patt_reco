@@ -3,7 +3,10 @@
 **Status:** M0 + M1 built (generator, storage, event display, 77 tests). M2-M5 not started.
 See [§9 Build log](#9-build-log--what-changed-on-contact-with-reality) for what the plan got wrong.
 **Owner:** fanrado
-**Date:** 2026-09-11
+**Written:** 2026-09-11 · **Last marked:** 2026-09-12
+
+Section headings carry a status marker: ✅ built · 🟡 partly built · ⬜ not started.
+Where a built section differs from what was planned, the heading says so and §9 explains why.
 
 ---
 
@@ -53,7 +56,7 @@ config variants are provided so the same code scales to a cluster later without 
 
 ---
 
-## 1. Task 1 — Fake dataset generation
+## 1. Task 1 — Fake dataset generation ✅
 
 Pipeline, in four decoupled layers. Each layer is independently testable and independently
 swappable — this is what lets an experiment plug in *its* response function later without
@@ -67,7 +70,10 @@ touching the geometry code.
      compose.py                   defects.py
 ```
 
-### 1.1 Geometry layer — 3D objects
+### 1.1 Geometry layer — 3D objects ✅
+
+> Built in `patt_reco/geometry/primitives.py`. All six primitives, plus the `spiral`,
+> `zigzag` and `double_ring` OOD shapes in `geometry/ood.py` that §4.2 needs.
 
 All primitives expose the same interface:
 
@@ -94,7 +100,13 @@ class Primitive(Protocol):
 Objects are emitted as **point clouds with charge weights**, not as rasterized images — the
 rendering resolution is a detector parameter, not a geometry parameter.
 
-### 1.2 Composition — building an event
+### 1.2 Composition — building an event ✅
+
+> Built in `patt_reco/geometry/compose.py`. Vertex groups, forced crossings and delta rays
+> all present. Containment is by clipping at the readout window rather than by an explicit
+> probability knob — an object that leaves simply stops depositing where it leaves.
+> `vee` is a two-member vertex group rather than a primitive, so each prong gets its own
+> instance id (§9.8).
 
 `compose.py` places primitives in a fiducial volume with control over exactly the things we
 later want to *measure sensitivity to*:
@@ -106,7 +118,11 @@ later want to *measure sensitivity to*:
   that are the actual hard case.
 - **Containment**: objects may exit the volume (truncated) with configurable probability.
 
-### 1.3 Detector layer — 3D → 2D views
+### 1.3 Detector layer — 3D → 2D views ✅
+
+> Built across `detector/readout.py`, `response.py`, `projection.py` and `digitize.py`.
+> Defects live in `readout.py` rather than a separate `defects.py` — they are sampled with
+> the rest of the per-event detector state and separating them bought nothing.
 
 A `PlaneView` projects a 3D point onto (channel, tick):
 
@@ -132,7 +148,11 @@ All of the above are sampled per event within configured ranges (principle 2).
 **Default resolution:** 3 views × 128 channels × 128 ticks, occupancy ~2–5%. A `large` config
 uses 256×256 for later scaling.
 
-### 1.4 Noise layer
+### 1.4 Noise layer 🟡
+
+> Built in `patt_reco/noise/`. Incoherent, coherent and 1/f are there, as are hit-like
+> blips. **Sticky ADC codes are not implemented.** Cosmic background moved to
+> `geometry/compose.py`, since cosmics are objects with instance ids, not a noise term (§9.8).
 
 - **Incoherent**: per-(channel,tick) Gaussian / white noise.
 - **Coherent**: noise shared across channel groups (e.g. blocks of 16/32/64). This is the
@@ -145,7 +165,10 @@ uses 256×256 for later scaling.
 
 Noise is parameterized by a target **SNR sweep** so §4 can plot performance vs. SNR.
 
-### 1.5 Labels — the data contract
+### 1.5 Labels — the data contract ✅
+
+> Built in `detector/projection.py` and `dataset/schema.py`. `semantic` is derived from
+> `instance` through the object table rather than stored, so the two cannot disagree (§9.4).
 
 Per view, per pixel:
 
@@ -166,7 +189,10 @@ Event-level `objects` table: `id, class, 3d_params, per_view_params, total_charg
 visible` (an object fully hidden behind another in a given view is marked not-visible in that
 view and excluded from that view's efficiency denominator).
 
-### 1.6 Storage and reproducibility
+### 1.6 Storage and reproducibility ✅
+
+> Built in `dataset/schema.py`, `io_hdf5.py` and `generate.py`. Measured sizes and rates are
+> in §9.7; the frozen test set needed no extra bytes (§9.5).
 
 - **Store the clean sparse image + the noise config + the event seed; realize noise at load time.**
   Datasets stay small (~12 kB/event → 100k events ≈ 1.2 GB), and every epoch sees a fresh noise
@@ -178,27 +204,44 @@ view and excluded from that view's efficiency denominator).
 - Determinism: `rng = np.random.default_rng(np.random.SeedSequence(dataset_seed, event_index))`.
   Generation is embarrassingly parallel and bit-identical regardless of worker count.
 
-### 1.7 Difficulty ladder
+### 1.7 Difficulty ladder ✅
 
-| Level | Contents | Purpose | Size |
-|---|---|---|---|
-| **L0** | 1 object, no noise, fixed detector params | wiring/debugging, overfit tests | 20k |
-| **L1** | 2–5 objects, no noise, randomized detector | multi-object, first crossings | 40k |
-| **L2** | 2–5 objects + full noise | the main training set | 60k |
-| **L3** | 10–60 objects, cosmics, SNR sweep | **busy events** (§4) — *validation only* | 20k |
-| **L4** | unseen shapes (spiral, zigzag, double-ring), shifted pitch/response | out-of-distribution | 10k |
+| Level | Contents | Purpose | Size | Config | Status |
+|---|---|---|---|---|---|
+| **L0** | 1 object, no noise, fixed detector params | wiring/debugging, overfit tests | 20k | `l0_single.yaml` | ✅ |
+| **L1** | 2–5 objects, no noise, randomized detector | multi-object, first crossings | 40k | `l1_multi.yaml` | ✅ |
+| **L2** | 2–5 objects + full noise | the main training set | 60k | `l2_noise.yaml` | ✅ |
+| **L3** | 10–**40** objects, cosmics, SNR sweep | **busy events** (§4) — *validation only* | 20k | `l3_busy.yaml` | ✅ |
+| **L4a** | unseen shapes (spiral, zigzag, double-ring) | out-of-distribution geometry | 10k | `l4_ood_shape.yaml` | ✅ |
+| **L4b** | familiar shapes, shifted pitch/response/diffusion | out-of-distribution detector | 10k | `l4_domain_shift.yaml` | ✅ |
 
 L3/L4 are **never trained on**. That is the whole point of §4.
 
-### 1.8 Visualization
+Two changes from the plan as written: L3 tops out at 40 objects rather than 60 and uses a smaller
+object-size distribution (§9.6), and L4 is split in two so a failure can be attributed to unseen
+geometry or to an unseen detector rather than to both at once (§9.8).
 
-`viz/event_display.py`: three-view display with toggleable overlays (raw ADC / semantic truth /
-instance truth / prediction / error map). Non-negotiable — nearly every generator bug is obvious
-in an event display and invisible in a loss curve.
+The configs exist and generate; **the datasets themselves have not been generated to full size**
+— only up to 4000-event benchmark runs. Budget ~5 minutes on 8 cores and ~3.7 GB for the lot.
+
+### 1.8 Visualization 🟡
+
+`viz/event_display.py`: three-view display with selectable panels. Non-negotiable — nearly every
+generator bug is obvious in an event display and invisible in a loss curve.
+
+Built: `adc`, `charge`, `semantic`, `instance`, `n_contrib`, driven from `scripts/preview.py`.
+The ADC panel scales to a percentile rather than the maximum, because one Bragg peak is routinely
+10x brighter than everything else and washes the rest of the event out.
+
+Not built: the `prediction` and `error map` panels, which need a model to exist first (M2).
 
 ---
 
-## 2. Task 2 — Models
+## 2. Task 2 — Models ⬜
+
+> Nothing in this section is built. `patt_reco/models/` and `patt_reco/losses/` do not exist
+> yet. The build order in §2.5 still stands, and §2.2 is the gate: the classical baselines
+> come first because they also test whether the generator is too easy.
 
 ### 2.1 Common interface
 
@@ -260,7 +303,11 @@ for the next. Do not start with the transformer.
 
 ---
 
-## 3. Task 3 — Training and testing
+## 3. Task 3 — Training and testing 🟡
+
+> Only §3.6 is partly built: the generator invariants are covered by 77 passing tests. There
+> is no training loop, no losses and no metrics. §3.1 should be revisited before M2 —
+> the measured class imbalance (§9.9) has a second component the section does not account for.
 
 ### 3.1 Losses
 
@@ -307,7 +354,7 @@ worth reporting either way.
 - Local-only by design (TensorBoard, not a cloud tracker) — keeps the project dependency-light
   and shareable.
 
-### 3.6 Testing (pytest)
+### 3.6 Testing (pytest) 🟡
 
 **Generator invariants:**
 - same `(seed, index)` → bit-identical event;
@@ -326,7 +373,19 @@ worth reporting either way.
 **CI:** run the fast subset (generator + shapes + metrics) on every commit; the overfit test
 nightly.
 
-### 3.7 Metrics
+**Built so far — 77 tests, 0.6 s:**
+
+| file | tests | covers |
+|---|---|---|
+| `tests/test_geometry.py` | 28 | primitive shapes, Bragg peaks, scattering vs momentum, shower energy conservation, composition, forced crossings |
+| `tests/test_detector.py` | 17 | projection against the analytic formula, the shared tick axis, charge conservation, response normalisation, label/object-table agreement |
+| `tests/test_noise.py` | 11 | reproducibility, SNR-scale linearity, coherence structure, 1/f spectrum |
+| `tests/test_dataset.py` | 15 | determinism from (seed, index), lossless shard round-trip across buffer boundaries, derived-label consistency, serial == parallel |
+
+**Not built:** every model and training test (shape contracts, overfit-one-batch,
+checkpoint round-trip, hand-computed metric cases), and the CI workflow itself.
+
+### 3.7 Metrics ⬜
 
 *Semantic:* per-class IoU, mIoU, pixel accuracy, confusion matrix — reported three ways per the
 overlap rule (all pixels / ambiguous excluded / ambiguity-weighted).
@@ -346,7 +405,11 @@ the failure modes this project exists to expose.
 
 ---
 
-## 4. Task 4 — Validation on busy events
+## 4. Task 4 — Validation on busy events ⬜
+
+> Nothing here is built, but the inputs are: `l3_busy.yaml` and both L4 configs generate, and
+> `noise_scale` / `--set` already drive the SNR and multiplicity sweeps §4.2 needs. What is
+> missing is a model to evaluate, the metric code, and the frozen published datasets.
 
 This is the acceptance test, and it is deliberately harder than the training distribution.
 
@@ -392,36 +455,48 @@ pattern-recognition framework to the pile.
 
 ---
 
-## 5. Repository layout
+## 5. Repository layout 🟡
+
+`✅` exists on disk and is committed · `⬜` planned, not written.
 
 ```
-patt_reco/
-├── PLAN.md                     ← this file
-├── README.md
-├── pyproject.toml              (torch, numpy, h5py, scipy, scikit-learn, pyyaml,
-│                                tensorboard, matplotlib, pytest)
+patt_reco/                        38 files, 38 commits, 77 tests
+├── ✅ PLAN.md                    ← this file
+├── ✅ README.md
+├── ✅ .gitignore
+├── ✅ pyproject.toml             (numpy, scipy, h5py, matplotlib, pyyaml core;
+│                                  torch + tensorboard + sklearn behind a `dl` extra)
 ├── configs/
-│   ├── data/    l0_single.yaml  l1_multi.yaml  l2_noise.yaml  l3_busy.yaml  l4_ood.yaml
-│   ├── model/   baseline_hough.yaml  unet_sem.yaml  unet_inst.yaml  query_decoder.yaml  hit_tokens.yaml
-│   └── train/   base.yaml  curriculum.yaml
+│   ├── ✅ data/    l0_single  l1_multi  l2_noise  l3_busy  l4_ood_shape  l4_domain_shift
+│   ├── ⬜ model/   baseline_hough  unet_sem  unet_inst  query_decoder  hit_tokens
+│   └── ⬜ train/   base  curriculum
 ├── patt_reco/
-│   ├── geometry/   primitives.py  scattering.py  shower.py  compose.py
-│   ├── detector/   projection.py  response.py  digitize.py  defects.py
-│   ├── noise/      incoherent.py  coherent.py  background.py
-│   ├── dataset/    generate.py  schema.py  io_hdf5.py  torch_dataset.py  augment.py
-│   ├── models/     registry.py  unet.py  heads.py  query_decoder.py  hit_tokens.py  baselines.py
-│   ├── losses/     focal_dice.py  discriminative.py  hungarian.py
-│   ├── train/      loop.py  curriculum.py  tracking.py
-│   ├── eval/       metrics_sem.py  metrics_inst.py  differential.py  report.py
-│   ├── viz/        event_display.py
-│   └── cli.py
-├── scripts/  make_dataset.py  train.py  evaluate.py  benchmark_busy.py
-├── tests/
-└── notebooks/  01_generator_tour.ipynb  02_baselines.ipynb  03_results.ipynb
+│   ├── ✅ config.py              all generator knobs + the class enum   (not in the original plan)
+│   ├── geometry/   ✅ volume.py  ✅ primitives.py  ✅ compose.py  ✅ ood.py
+│   ├── detector/   ✅ readout.py  ✅ response.py  ✅ projection.py  ✅ digitize.py
+│   ├── noise/      ✅ incoherent.py  ✅ coherent.py  ✅ __init__.py
+│   ├── dataset/    ✅ schema.py  ✅ io_hdf5.py  ✅ generate.py  ⬜ torch_dataset.py  ⬜ augment.py
+│   ├── ⬜ models/  registry  unet  heads  query_decoder  hit_tokens  baselines
+│   ├── ⬜ losses/  focal_dice  discriminative  hungarian
+│   ├── ⬜ train/   loop  curriculum  tracking
+│   ├── ⬜ eval/    metrics_sem  metrics_inst  differential  report
+│   ├── viz/        ✅ event_display.py
+│   └── ⬜ cli.py                 (scripts/ covers this for now)
+├── scripts/  ✅ make_dataset.py  ✅ preview.py  ⬜ train.py  ⬜ evaluate.py  ⬜ benchmark_busy.py
+├── tests/    ✅ conftest  ✅ test_geometry  ✅ test_detector  ✅ test_noise  ✅ test_dataset
+└── ⬜ notebooks/  01_generator_tour  02_baselines  03_results
 ```
+
+Four files in the planned tree were never written because they had nothing to hold:
+`geometry/scattering.py` and `geometry/shower.py` are ~40 lines each and live in `primitives.py`;
+`detector/defects.py` folded into `readout.py`, where the rest of the per-event detector state is
+sampled; `noise/background.py` became cosmic composition in `geometry/compose.py` (§9.8). One file
+was added that the plan missed entirely: `config.py`, which turned out to be where the whole
+design actually lives.
 
 `patt_reco` is its own package rather than living inside `signal_processing_toolkit` — different
-scope, different dependency weight (torch). It turned out not to depend on it at all; see §9.
+scope, different dependency weight (torch). It turned out not to depend on it at all; see §9.1.
+It is also now its own git repository.
 
 ---
 
@@ -455,21 +530,28 @@ semantic baseline is already a usable artifact even if M4 never happens.
 
 ---
 
-## 8. Open decisions
+## 8. Open decisions 🟡
 
-1. **Class granularity.** Is `helix` vs. `scattered` a distinction worth a class, or should
-   "curved track" be one class? Affects the confusion matrix more than the architecture. *Lean:
-   merge for v1, split in an ablation.*
-2. **Cosmic background: class or nuisance?** Currently its own class with instance ids. An
-   experiment wanting pure rejection can collapse the label at load time.
-3. **View count.** Three stereo views is the default; is a 2-view configuration worth carrying as
-   a first-class option (some detectors have it, and it is strictly harder)?
-4. **Benchmark distribution.** Publish frozen HDF5 (large, exactly reproducible) or configs+seeds
-   (tiny, reproducible only with pinned library versions)? *Lean: both — seeds in the repo, one
-   frozen tarball released.*
-5. **Parameter regression targets.** Which physics parameters are actually useful downstream
-   (direction and start point certainly; radius and dE/dx profile maybe)? Worth asking a
-   collaborator before M4.
+Three of the five are now settled by the build; the marker says how.
+
+1. **Class granularity** — ⬜ still open. Is `helix` vs. `scattered` a distinction worth a class,
+   or should "curved track" be one class? Built as *separate* classes (ids 2 and 3), against the
+   original lean, because the generator can always merge two labels at load time and cannot split
+   one. The ablation is still owed.
+2. **Cosmic background: class or nuisance?** — ✅ settled. Built as its own class (id 7) *and*
+   carrying instance ids, so both the "reject it" and "reconstruct it" framings are measurable.
+   An experiment wanting pure rejection collapses the label at load time.
+3. **View count** — ⬜ still open. Three stereo views is the built default, but
+   `view_angles_deg` is an ordinary config tuple of any length, so a 2-view run costs one line.
+   Nothing downstream assumes three. Whether to carry 2-view as a *reported* configuration is
+   still undecided.
+4. **Benchmark distribution** — 🟡 half settled. Seeds-in-the-repo now works: the configs are
+   committed and `(seed, index)` reproduces any event bit-for-bit, with a test for it. Whether to
+   also release a frozen tarball (L3 is ~1.6 GB) is still open, and is an M5 decision.
+5. **Parameter regression targets** — 🟡 provisionally answered. `detector/projection.py` stores a
+   fixed 10-slot vector per object — start point (3), direction (3), length, radius, charge,
+   energy — with NaN where a field does not apply. That covers the certain ones and is cheap to
+   extend. The dE/dx profile is *not* stored. Still worth asking a collaborator before M4.
 
 
 ---
