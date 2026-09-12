@@ -1,0 +1,20 @@
+# L4a -- unseen geometry on a nominal detector. VALIDATION ONLY.
+# Spirals, zigzags and double rings are labelled with their nearest in-
+# distribution class (helix, track, ring). The question is whether the model
+# degrades into the plausible class or hallucinates something confidently wrong.
+name: l4_ood_shape
+n_events: 10000
+seed: 1400
+shard_size: 2000
+freeze_noise: true
+
+event:
+  n_objects: [2, 5]
+  class_weights: {spiral: 1.0, zigzag: 1.0, double_ring: 1.0}
+  p_vertex: 0.2
+  p_delta: 0.0
+  p_crossing: 0.3
+  n_cosmics: [0, 1]
+
+noise:
+  enabled: true
