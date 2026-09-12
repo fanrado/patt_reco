@@ -84,8 +84,15 @@ class Trainer:
                 self.global_step += 1
 
                 if self.global_step % self.cfg.run.log_every == 0:
-                    self.run.scalar("train/loss", running["loss"] / n_batches, self.global_step)
+                    mean_loss = running["loss"] / n_batches
+                    self.run.scalar("train/loss", mean_loss, self.global_step)
                     self.run.scalar("train/lr", self.cfg.optim.lr * scale, self.global_step)
+                    # an epoch here is several minutes; printing only at the end
+                    # leaves the user staring at nothing
+                    done = (i + 1) / max(len(self.train_loader), 1)
+                    rate = (time.time() - started) / max(i + 1, 1)
+                    print(f"    epoch {epoch:3d}  {100 * done:5.1f}%  loss {mean_loss:.4f}  "
+                          f"eta {rate * (len(self.train_loader) - i - 1):5.0f}s", flush=True)
 
         return {k: v / max(n_batches, 1) for k, v in running.items()} | {
             "epoch_seconds": time.time() - started}
