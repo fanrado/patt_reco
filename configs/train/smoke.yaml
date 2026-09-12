@@ -1,0 +1,18 @@
+# A two-minute end-to-end check that the whole phase-2 pipeline runs.
+# Not a result -- just proof the wiring is intact.
+model: {name: unet, base_width: 16, depth: 3}
+
+data:
+  train: data/l2_noise/train
+  val: data/l2_noise/val
+  batch_size: 4
+  accum_steps: 2
+  num_workers: 2
+  augment: true
+  mix_prob: 0.25
+  max_train_events: 200
+  max_val_events: 60
+
+optim: {lr: 0.001, epochs: 2, warmup_frac: 0.1, amp: true}
+loss: {class_weighting: pixels_per_object, class_weight_events: 50}
+run: {out_dir: runs, name: smoke, preview_events: 2}
