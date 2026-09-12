@@ -755,7 +755,45 @@ into an absolute 3 ADC. That is why the L0 optimum sits at "8 sigma" -- it is
 really 8 ADC. The floor is still the right behaviour (it keeps the normalisation
 finite), but the units stop meaning what they say once noise is off.
 
-### 9.10 Still open from M1
+### 9.10 Truth density is set by the sampler, not by physics (known defect)
+
+Measured interior hole fraction -- what proportion of a labelled object's filled
+outline is *not* labelled -- over 60 L2 events:
+
+| class | interior holes |
+|---|---|
+| track, scattered, helix, cosmic | < 1% |
+| shower | 4.3% |
+| ring | 11.6% |
+| **blob** | **17.6%** |
+
+Trajectory-like objects deposit one point every `step_cm` = 0.05 cm along a 1D
+path, so at a 0.4 cm pitch every pixel gets ~8 samples and the image is solid.
+Extended objects do not get the same treatment: a blob is 400 points scattered
+through a 3D Gaussian, and a ring's finite thickness comes from independent
+random radial jitter. Both end up sampling a 2D or 3D region at roughly one
+point per pixel, so Poisson gaps open up.
+
+This is a defect, not a feature. A real ionisation cloud is continuous; the holes
+are an artefact of how many points the generator chose to draw. It makes blob the
+hardest class for a reason that has nothing to do with pattern recognition, and
+it puts a ceiling on blob IoU that no model can pass -- the missing pixels are
+unpredictable by construction.
+
+It was found by looking at a phase-3 preview: the model predicts a *solid* disc
+where truth is speckled, and is penalised for being right.
+
+**Fix (not yet applied):** scale the sample count with the object's size so the
+projected density is constant -- blob points proportional to (sigma / step_cm)^2,
+and stratified rather than purely random sampling across a ring's thickness.
+Applying it changes the labels, so it invalidates any dataset generated before
+the change and any model trained on one. It should be done before M3, where
+instance metrics will be far more sensitive to speckle than per-pixel IoU is.
+
+Until then, treat blob and ring IoU as floors depressed by a known amount, and do
+not read the blob row of a confusion matrix as a statement about the model.
+
+### 9.11 Still open from M1
 
 - The notebook tour (`notebooks/01_generator_tour.ipynb`) is not written; `scripts/preview.py`
   covers the same ground from the command line.
