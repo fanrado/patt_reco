@@ -1,0 +1,19 @@
+# L1 -- 2-5 objects, no noise, fully randomised detector.
+# Purpose: multi-object topology and the first crossings, with the detector
+# already randomised so nothing downstream can quietly learn one geometry.
+name: l1_multi
+n_events: 40000
+seed: 1100
+shard_size: 5000
+
+event:
+  n_objects: [2, 5]
+  p_vertex: 0.3
+  vertex_size: [2, 4]
+  p_delta: 0.15
+  p_crossing: 0.3
+  crossing_angle_deg: [5.0, 90.0]
+  n_cosmics: [0, 0]
+
+noise:
+  enabled: false
