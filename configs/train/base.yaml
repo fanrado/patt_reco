@@ -1,0 +1,43 @@
+# Phase 2 -- semantic segmentation on L2, sized for a 4 GB GPU.
+#
+# batch_size 8 x accum_steps 4 = effective batch 32. Raise batch_size and lower
+# accum_steps on a larger card; the effective batch is what matters.
+model:
+  name: unet
+  base_width: 32
+  depth: 4
+  in_channels: 1
+
+data:
+  train: data/l2_noise/train
+  val: data/l2_noise/val
+  batch_size: 8
+  accum_steps: 4
+  num_workers: 4
+  augment: true
+  mix_prob: 0.25          # event mixing: see patt_reco/dataset/augment.py
+  max_tick_shift: 8
+  max_val_events: 2000
+
+optim:
+  lr: 0.0003
+  weight_decay: 0.0001
+  epochs: 30
+  warmup_frac: 0.03
+  grad_clip: 1.0
+  amp: true
+
+loss:
+  focal_gamma: 2.0
+  focal_weight: 1.0
+  dice_weight: 1.0
+  ambiguity_weighting: true
+  class_weighting: pixels_per_object    # see PLAN.md 9.9
+  class_weight_events: 200
+
+run:
+  out_dir: runs
+  name: unet_l2
+  seed: 0
+  preview_events: 3
+  log_every: 50
