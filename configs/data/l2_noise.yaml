@@ -1,0 +1,23 @@
+# L2 -- the main training set: 2-5 objects, randomised detector, full noise.
+name: l2_noise
+n_events: 60000
+seed: 1200
+shard_size: 5000
+
+event:
+  n_objects: [2, 5]
+  p_vertex: 0.3
+  vertex_size: [2, 4]
+  p_delta: 0.15
+  p_crossing: 0.3
+  crossing_angle_deg: [5.0, 90.0]
+  n_cosmics: [0, 1]
+
+noise:
+  enabled: true
+  incoherent_adc: [1.0, 4.0]
+  coherent_adc: [0.0, 3.0]
+  coherent_group: 32
+  pink_adc: [0.0, 2.0]
+  p_blip: 0.3
+  n_blips: [1, 20]
