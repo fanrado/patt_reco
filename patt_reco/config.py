@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field, fields, is_dataclass, asdict
-from typing import Any
+from typing import Any, get_type_hints
 
 import yaml
 
@@ -215,14 +215,24 @@ class DatasetConfig:
 # --------------------------------------------------------------------------- #
 
 def _build(cls, data: dict):
-    """Recursively construct a (nested) dataclass from a plain dict."""
+    """Recursively construct a (nested) dataclass from a plain dict.
+
+    Annotations are resolved with `get_type_hints`, which evaluates them in the
+    *defining module's* namespace. Using this module's globals instead would
+    silently leave nested dataclasses as plain dicts for any config class
+    declared elsewhere -- `patt_reco.train.config.TrainConfig`, for instance.
+    """
+    try:
+        type_by_name = get_type_hints(cls)
+    except Exception:                       # unresolvable forward reference
+        type_by_name = {f.name: f.type for f in fields(cls)}
+
     kwargs = {}
-    type_by_name = {f.name: f.type for f in fields(cls)}
+    known = {f.name for f in fields(cls)}
     for key, value in data.items():
-        if key not in type_by_name:
+        if key not in known:
             raise KeyError(f"{cls.__name__} has no field {key!r}")
-        target = type_by_name[key]
-        # resolve string annotations from `from __future__ import annotations`
+        target = type_by_name.get(key)
         if isinstance(target, str):
             target = globals().get(target, target)
         if is_dataclass(target) and isinstance(value, dict):
