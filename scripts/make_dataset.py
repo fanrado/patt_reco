@@ -11,27 +11,9 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+from patt_reco.cliutil import apply_override
 from patt_reco.config import config_hash, load_yaml
 from patt_reco.dataset.generate import generate_dataset
-
-
-def apply_override(cfg, spec: str):
-    """Apply one `dotted.path=value` override to a nested frozen config."""
-    import yaml
-    path, _, raw = spec.partition("=")
-    if not _:
-        raise SystemExit(f"--set expects PATH=VALUE, got {spec!r}")
-    value = yaml.safe_load(raw)
-    if isinstance(value, list):
-        value = tuple(value)
-
-    keys = path.split(".")
-    def descend(node, remaining):
-        if len(remaining) == 1:
-            return replace(node, **{remaining[0]: value})
-        child = getattr(node, remaining[0])
-        return replace(node, **{remaining[0]: descend(child, remaining[1:])})
-    return descend(cfg, keys)
 
 
 def main() -> None:
