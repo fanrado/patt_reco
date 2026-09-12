@@ -165,6 +165,26 @@ class ShardReader:
             meta={k: float(f[f"meta/{k}"][i]) for k in _META_KEYS},
         )
 
+    def covariates(self, i: int) -> dict:
+        """Per-event quantities for differential metrics, without reading pixels.
+
+        The validation sweeps bin by multiplicity and occupancy over thousands of
+        events; inflating every event just to count its objects would dominate
+        the runtime.
+        """
+        if i < 0:
+            i += self.n_events
+        ob0, ob1 = self._off["objects"][i], self._off["objects"][i + 1]
+        ev0, ev1 = self._off["events"][i], self._off["events"][i + 1]
+        n_pixels = int(ev1 - ev0)
+        return {
+            "index": int(self.file["meta/index"][i]),
+            "n_objects": int(ob1 - ob0),
+            "occupancy": float(self.file["meta/occupancy"][i]),
+            "n_cosmics": int(self.file["meta/n_cosmics"][i]),
+            "n_hit_pixels": n_pixels,
+        }
+
     def close(self) -> None:
         self.file.close()
 
@@ -186,6 +206,12 @@ class DatasetReader:
             i += len(self)
         shard = int(np.searchsorted(self.bounds, i, side="right") - 1)
         return self.shards[shard][i - self.bounds[shard]]
+
+    def covariates(self, i: int) -> dict:
+        if i < 0:
+            i += len(self)
+        shard = int(np.searchsorted(self.bounds, i, side="right") - 1)
+        return self.shards[shard].covariates(i - self.bounds[shard])
 
     def close(self) -> None:
         for shard in self.shards:
