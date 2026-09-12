@@ -58,6 +58,10 @@ class ThresholdBaseline(Baseline):
     name = "threshold"
 
     def __init__(self, n_sigma: float = 3.0, default_class: int = TRACK):
+        # 3 sigma is the measured optimum on L2. Note it is *not* optimal on a
+        # noise-free set: there the MAD estimate is zero, the preprocess floor
+        # turns the cut into an absolute 3 ADC, and the optimum sits near 8.
+        # See PLAN.md 9.9 -- and scan the threshold before quoting a floor.
         self.n_sigma = n_sigma
         self.default_class = default_class
 
