@@ -1,6 +1,7 @@
 # `patt_reco` — An Experiment-Independent Pattern Recognition Benchmark & Model
 
-**Status:** M0 + M1 built (generator, storage, event display, 77 tests). M2-M5 not started.
+**Status:** M0-M2 built (generator, baselines, U-Net, training, evaluation, busy-event
+validation harness; 120 tests). M3-M5 not started.
 See [§9 Build log](#9-build-log--what-changed-on-contact-with-reality) for what the plan got wrong.
 **Owner:** fanrado
 **Written:** 2026-09-11 · **Last marked:** 2026-09-12
@@ -237,13 +238,17 @@ Not built: the `prediction` and `error map` panels, which need a model to exist 
 
 ---
 
-## 2. Task 2 — Models ⬜
+## 2. Task 2 — Models 🟡
 
-> Nothing in this section is built. `patt_reco/models/` and `patt_reco/losses/` do not exist
-> yet. The build order in §2.5 still stands, and §2.2 is the gate: the classical baselines
-> come first because they also test whether the generator is too easy.
+> The first two stages of the §2.5 build order are done: classical baselines (§2.2) and the
+> semantic U-Net (§2.3, phase 1). Instance heads, the query decoder and the hit-token
+> transformer are not built.
 
-### 2.1 Common interface
+### 2.1 Common interface ✅
+
+> Built as `models/registry.py` plus the dict-in/dict-out convention. The registry is keyed
+> by name from the training config, and losses read whichever output keys are present, so
+> M3 and M4 models slot in without touching the training loop.
 
 ```python
 model(batch: dict[str, Tensor]) -> dict[str, Tensor]
@@ -256,14 +261,24 @@ model(batch: dict[str, Tensor]) -> dict[str, Tensor]
 A registry (`models.build(cfg)`) keeps models swappable from config. Losses and metrics key off
 which outputs are present, so adding a model never requires touching the training loop.
 
-### 2.2 Classical baselines (build these first)
+### 2.2 Classical baselines (build these first) ✅
+
+> Built in `models/baselines.py`: `threshold`, `hough` (own implementation, no skimage) and
+> `connected`. On L2 the foreground IoU floor is ~0.44 -- high enough to be a real baseline,
+> far enough from 1.0 that the generator is not trivially solvable. A test pins that band so
+> a future generator change that makes the task too easy fails loudly.
 
 `models/baselines.py`: thresholding + connected components; Hough transform for lines; circle
 Hough / RANSAC for arcs and rings; DBSCAN on hit coordinates. Cheap, no training, and they
 establish the floor that every learned model must clear. They also double as a generator sanity
 check: if Hough cannot find a clean isolated line in an L0 event, the *generator* is wrong.
 
-### 2.3 CNN arm
+### 2.3 CNN arm 🟡
+
+> Phase 1 (semantic U-Net) built in `models/unet.py`: shared-weight siamese encoder over
+> views, GroupNorm, bilinear upsampling, 7.8 M parameters at `base_width=32`. Views are
+> folded into the batch axis, which *is* the weight sharing, and nothing hard-codes three
+> planes. Cross-view fusion and the Phase-2 instance heads are not built.
 
 - **Phase 1 — semantic segmentation.** 2D U-Net, 4 down/up levels, base width 32, GroupNorm,
   ~5–8 M params. Input is **one view at a time** through a shared-weight (siamese) encoder —
@@ -277,7 +292,7 @@ check: if Hough cannot find a clean isolated line in an L0 event, the *generator
 
   Instances = mean-shift or DBSCAN in (shifted-coords ⊕ embedding) space. Cheap and robust.
 
-### 2.4 Transformer arm
+### 2.4 Transformer arm ⬜
 
 Two variants, in priority order:
 
@@ -295,7 +310,7 @@ Two variants, in priority order:
 The hit-token model is also the natural bridge to native 3D (tokens = voxels) if the project
 later moves off 2D projections.
 
-### 2.5 Recommendation
+### 2.5 Recommendation 🟡  *(baselines and U-Net done; query decoder and hit-token next)*
 
 Build in this order: **baselines → U-Net semantic → U-Net + instance heads → query decoder →
 hit-token transformer.** Each stage is a working system, and each provides the comparison point
@@ -305,11 +320,18 @@ for the next. Do not start with the transformer.
 
 ## 3. Task 3 — Training and testing 🟡
 
-> Only §3.6 is partly built: the generator invariants are covered by 77 passing tests. There
-> is no training loop, no losses and no metrics. §3.1 should be revisited before M2 —
-> the measured class imbalance (§9.9) has a second component the section does not account for.
+> Built for semantic segmentation: losses (§3.1), the 4 GB budget (§3.2), the data pipeline
+> and augmentation (§3.3), experiment management (§3.5), and the semantic half of the metric
+> suite (§3.7). Not built: the curriculum (§3.4), instance and object metrics, calibration,
+> and CI.
 
-### 3.1 Losses
+### 3.1 Losses 🟡
+
+> Built in `losses/focal_dice.py` for the semantic head, with the §9.9 correction applied:
+> class weights come from inverse *pixels-per-object*, not inverse class frequency. Measured
+> weights on L2 are track 1.89, scattered 1.39, helix 0.98, ring 0.29 -- the ring is weighted
+> down 6x relative to the track, which is the imbalance §3.1 as written would have missed.
+> Ambiguous pixels are down-weighted by 1/n_contrib. The instance and query losses are not built.
 
 | Head | Loss | Note |
 |---|---|---|
@@ -322,7 +344,10 @@ Multi-task weights: start fixed (tuned by a short sweep), optionally switch to l
 uncertainty weighting. Ambiguous pixels (`n_contrib > 1`) are down-weighted by `1/n_contrib` in
 the semantic loss — they are genuinely ill-posed and should not dominate gradients.
 
-### 3.2 Fitting 4 GB
+### 3.2 Fitting 4 GB ✅
+
+> Measured: `base_width=32, depth=4` at batch 8 x 3 views uses **1.9 GB** of the 4.1 GB card
+> with AMP and channels-last. `--profile-memory` was not built; `nvidia-smi` covered it.
 
 - Mixed precision (AMP, fp16 with bf16 fallback), `channels_last`.
 - 128×128, batch 16 per step, gradient accumulation ×4 → effective batch 64.
@@ -330,7 +355,11 @@ the semantic loss — they are genuinely ill-posed and should not dominate gradi
 - Estimated: ~40 min/epoch on 60k L2 events; a full Phase-1 run ≈ 6–10 h. Plan runs overnight.
 - Guardrail: a `--profile-memory` flag that reports peak VRAM for a config before a long run.
 
-### 3.3 Data pipeline and augmentation
+### 3.3 Data pipeline and augmentation ✅
+
+> Built in `dataset/torch_dataset.py` and `dataset/augment.py`: fresh noise per epoch, event
+> mixing, and flips/tick-shifts only. h5py handles are reopened per worker, which is the one
+> thing that makes `num_workers > 0` work at all.
 
 - On-the-fly noise realization (§1.6) — the single most valuable augmentation, and free.
 - **Event mixing**: overlay two clean L2 events (charges add, instance ids offset) to synthesize
@@ -340,13 +369,16 @@ the semantic loss — they are genuinely ill-posed and should not dominate gradi
   channel-flip and small tick-shifts are permitted.
 - `num_workers=4`, persistent workers, pinned memory.
 
-### 3.4 Curriculum
+### 3.4 Curriculum ⬜
 
 Start on L0+L1, mix in L2 over the first ~20% of training, then ramp event-mixing probability.
 Ablate against flat L2-only training — curricula often help less than claimed and that result is
 worth reporting either way.
 
-### 3.5 Experiment management
+### 3.5 Experiment management ✅
+
+> Built in `train/tracking.py`: `runs/<timestamp>_<tag>_<name>/` holding the resolved config,
+> git SHA, environment, `metrics.csv`, TensorBoard logs, checkpoints and previews.
 
 - Config: YAML → frozen dataclasses. No hidden defaults in code.
 - `runs/<timestamp>_<config-hash>/` containing: resolved config, git SHA, `pip freeze`, TensorBoard
@@ -385,7 +417,15 @@ nightly.
 **Not built:** every model and training test (shape contracts, overfit-one-batch,
 checkpoint round-trip, hand-computed metric cases), and the CI workflow itself.
 
-### 3.7 Metrics ⬜
+### 3.7 Metrics 🟡
+
+> Built in `eval/metrics_sem.py` and `eval/differential.py`: per-class IoU, mIoU, pixel
+> accuracy, purity/efficiency, the confusion matrix, foreground-only IoU, all three overlap
+> modes, and differential curves versus any covariate. Every number is validated against a
+> hand-computed case in `tests/test_metrics.py`.
+>
+> Not built: panoptic quality, ARI, per-instance purity/efficiency, object-parameter
+> resolution and calibration -- all of which need M3.
 
 *Semantic:* per-class IoU, mIoU, pixel accuracy, confusion matrix — reported three ways per the
 overlap rule (all pixels / ambiguous excluded / ambiguity-weighted).
@@ -405,21 +445,27 @@ the failure modes this project exists to expose.
 
 ---
 
-## 4. Task 4 — Validation on busy events ⬜
+## 4. Task 4 — Validation on busy events 🟡
 
-> Nothing here is built, but the inputs are: `l3_busy.yaml` and both L4 configs generate, and
-> `noise_scale` / `--set` already drive the SNR and multiplicity sweeps §4.2 needs. What is
-> missing is a model to evaluate, the metric code, and the frozen published datasets.
+> The harness is built as `scripts/validate.py`: busy-event evaluation, differential curves
+> versus multiplicity and occupancy, an SNR sweep, both L4 slices, and the classical
+> baselines on the same sets, written to a JSON report plus curve plots. What is missing is
+> the crossing-angle axis (needs per-object truth matching, i.e. M3), the failure taxonomy
+> (§4.3), and the published frozen benchmark (§4.5).
 
 This is the acceptance test, and it is deliberately harder than the training distribution.
 
-### 4.1 The benchmark set (L3, frozen)
+### 4.1 The benchmark set (L3, frozen) ✅
 
 10–60 objects per event, mixed classes, shared vertices, full-volume cosmic tracks, coherent +
 incoherent noise, with deliberate small-angle crossings injected. Frozen bytes, versioned,
 published with the metric code.
 
-### 4.2 Stress axes (each a separate held-out slice)
+### 4.2 Stress axes (each a separate held-out slice) 🟡
+
+> Multiplicity, SNR, occupancy, OOD shape and domain shift are all wired into
+> `scripts/validate.py`. The crossing-angle sweep is not: scoring it needs per-object
+> matching rather than per-pixel metrics, which arrives with M3.
 
 | Axis | Sweep | Question it answers |
 |---|---|---|
@@ -430,14 +476,14 @@ published with the metric code.
 | OOD shape (L4) | spiral, zigzag, double-ring | does it classify or silently hallucinate a known class? |
 | Domain shift (L4) | ×2 pitch, different response kernel, ×3 diffusion | the transfer question — the entire premise of the project |
 
-### 4.3 Failure taxonomy
+### 4.3 Failure taxonomy ⬜
 
 Every failure is bucketed and counted, not just averaged into a metric: *merged instances*
 (two objects → one), *split instances*, *class confusion* (which pairs), *noise promoted to
 signal*, *low-energy misses*, *boundary errors at crossings*. Each bucket gets a gallery of
 representative event displays in the report.
 
-### 4.4 Acceptance criteria (first pass targets, to be revised after M2)
+### 4.4 Acceptance criteria (first pass targets, to be revised after M2) ⬜
 
 - mIoU ≥ 0.85 on L2; ≥ 0.70 on L3.
 - PQ ≥ 0.70 on L3 at multiplicity ≤ 20; graceful (not cliff-edge) degradation to multiplicity 60.
@@ -447,7 +493,7 @@ representative event displays in the report.
 These are targets for steering, not promises. The honest outcome of M5 may be "the transformer
 wins only above multiplicity 20" — that is a publishable result and should be reported as such.
 
-### 4.5 The real deliverable
+### 4.5 The real deliverable ⬜
 
 A frozen benchmark + metric code + baseline numbers that another group can run in an afternoon.
 That is what makes this project *reduce* duplicated effort rather than add one more private
@@ -468,24 +514,43 @@ patt_reco/                        38 files, 38 commits, 77 tests
 │                                  torch + tensorboard + sklearn behind a `dl` extra)
 ├── configs/
 │   ├── ✅ data/    l0_single  l1_multi  l2_noise  l3_busy  l4_ood_shape  l4_domain_shift
-│   ├── ⬜ model/   baseline_hough  unet_sem  unet_inst  query_decoder  hit_tokens
-│   └── ⬜ train/   base  curriculum
+│   ├── ✅ train/   base.yaml  smoke.yaml
+│   └── ⬜ model/   (model choice lives inside the train config; a separate tree earned nothing)
 ├── patt_reco/
 │   ├── ✅ config.py              all generator knobs + the class enum   (not in the original plan)
+│   ├── ✅ cliutil.py             --set overrides, device selection      (not in the original plan)
 │   ├── geometry/   ✅ volume.py  ✅ primitives.py  ✅ compose.py  ✅ ood.py
 │   ├── detector/   ✅ readout.py  ✅ response.py  ✅ projection.py  ✅ digitize.py
 │   ├── noise/      ✅ incoherent.py  ✅ coherent.py  ✅ __init__.py
-│   ├── dataset/    ✅ schema.py  ✅ io_hdf5.py  ✅ generate.py  ⬜ torch_dataset.py  ⬜ augment.py
-│   ├── ⬜ models/  registry  unet  heads  query_decoder  hit_tokens  baselines
-│   ├── ⬜ losses/  focal_dice  discriminative  hungarian
-│   ├── ⬜ train/   loop  curriculum  tracking
-│   ├── ⬜ eval/    metrics_sem  metrics_inst  differential  report
+│   ├── dataset/    ✅ schema.py  ✅ io_hdf5.py  ✅ generate.py  ✅ torch_dataset.py
+│   │               ✅ augment.py  ✅ preprocess.py
+│   ├── models/     ✅ registry.py  ✅ unet.py  ✅ baselines.py
+│   │               ⬜ heads  query_decoder  hit_tokens
+│   ├── losses/     ✅ focal_dice.py  ⬜ discriminative  hungarian
+│   ├── train/      ✅ loop.py  ✅ config.py  ✅ tracking.py  ⬜ curriculum
+│   ├── eval/       ✅ metrics_sem.py  ✅ differential.py  ✅ evaluate.py
+│   │               ⬜ metrics_inst  report
 │   ├── viz/        ✅ event_display.py
 │   └── ⬜ cli.py                 (scripts/ covers this for now)
-├── scripts/  ✅ make_dataset.py  ✅ preview.py  ⬜ train.py  ⬜ evaluate.py  ⬜ benchmark_busy.py
-├── tests/    ✅ conftest  ✅ test_geometry  ✅ test_detector  ✅ test_noise  ✅ test_dataset
+├── scripts/        ✅ generate.py   PHASE 1   ✅ train.py     PHASE 2
+│                   ✅ test.py       PHASE 3   ✅ validate.py  PHASE 4
+│                   ✅ make_dataset.py  ✅ preview.py          (single-dataset tools)
+├── tests/    ✅ conftest  ✅ test_geometry  ✅ test_detector  ✅ test_noise
+│             ✅ test_dataset  ✅ test_metrics  ✅ test_baselines  ✅ test_models
 └── ⬜ notebooks/  01_generator_tour  02_baselines  03_results
 ```
+
+**One script per phase**, each printing the command for the next:
+
+| phase | script | question it answers |
+|---|---|---|
+| 1 generation | `scripts/generate.py` | builds the whole ladder with train/val/test splits |
+| 2 training | `scripts/train.py` | fits a model; `--overfit` checks the wiring first |
+| 3 testing | `scripts/test.py` | did it learn the training distribution? |
+| 4 validation | `scripts/validate.py` | did it learn the *task*? busy, OOD, shifted detector |
+
+Phase 3 and phase 4 are deliberately separate: a model can pass the first and
+fail the second, and that gap is what the project exists to measure.
 
 Four files in the planned tree were never written because they had nothing to hold:
 `geometry/scattering.py` and `geometry/shower.py` are ~40 lines each and live in `primitives.py`;
@@ -506,10 +571,10 @@ It is also now its own git repository.
 |---|---|---|---|
 | **M0** | Scaffolding | package installs, CI runs, empty tests pass | **done** |
 | **M1** | Generator + event display | L0-L2 generate; all §3.6 generator invariants pass; notebook tour renders | **done** — L0-L4 all generate, 77 tests pass |
-| **M2** | Classical baselines + semantic U-Net | overfit test passes; L2 mIoU reported; U-Net vs. Hough table exists | not started |
+| **M2** | Classical baselines + semantic U-Net | overfit test passes; L2 mIoU reported; U-Net vs. Hough table exists | **built** — overfit passes (2.31 → 0.036); baseline-vs-model table produced by `scripts/test.py` |
 | **M3** | Instance segmentation | PQ/ARI/purity/efficiency on L2; failure gallery | not started |
 | **M4** | Transformer arm | query decoder and hit-token model trained; head-to-head on L2 | not started |
-| **M5** | Busy-event benchmark + report | L3/L4 frozen and published; all §4.2 sweeps plotted; write-up | not started |
+| **M5** | Busy-event benchmark + report | L3/L4 frozen and published; all §4.2 sweeps plotted; write-up | harness built (`scripts/validate.py`); benchmark not frozen or published |
 
 M1 and M2 carry most of the risk and most of the value — a correct generator with a working
 semantic baseline is already a usable artifact even if M4 never happens.
