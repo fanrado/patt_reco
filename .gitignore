@@ -1,0 +1,18 @@
+# environments
+venv/
+.venv/
+env_stk/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# generated output -- reproducible from configs + seeds, never committed.
+# anchored to the repo root so configs/data/ is not caught by the same pattern
+/data/
+/previews/
+/runs/
