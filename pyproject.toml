@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools >= 65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patt_reco"
+version = "0.0.1"
+description = "Experiment-independent pattern recognition benchmark for particle-physics detectors"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy >= 1.24",
+    "scipy >= 1.10",
+    "h5py >= 3.8",
+    "matplotlib",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dl = ["torch >= 2.0", "tensorboard", "scikit-learn"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["patt_reco*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
