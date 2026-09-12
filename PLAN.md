@@ -716,7 +716,46 @@ irrelevant (gzip-4 and gzip-1 differ by 4%); the call count was everything.
   zigzag→track, double_ring→ring), which sharpens the §4.2 question from "does it cope" to "does
   it degrade into the plausible class or hallucinate a confident wrong one".
 
-### 9.9 Still open from M1
+### 9.9 The classical floor is capped by the response, not by noise
+
+Measured foreground IoU for a simple n-sigma threshold, scanning the threshold to
+its optimum on each set:
+
+| set | best n_sigma | fg IoU | purity at optimum |
+|---|---|---|---|
+| L0 (one object, **no noise**, pinned detector) | 8 | 0.53 | 0.65 |
+| L1 (2-5 objects, no noise) | 3 | 0.41 | 0.50 |
+| L2 (2-5 objects, full noise) | 3 | 0.39 | 0.61 |
+| L3 (busy) | 3 | 0.28 | 0.68 |
+
+The monotonic fall across the ladder is the ladder working. The interesting row is
+**L0**: a noise-free image with a single object, where a threshold should be
+near-perfect, and instead caps at 0.53. No threshold does better -- purity never
+exceeds ~0.75 at any cut.
+
+That is §9.2 working exactly as designed rather than a bug. Truth lives on the
+deposited charge; the response convolution then spreads that charge over several
+ticks, so the digitised image has signal at pixels labelled empty. No
+thresholding method can recover those pixels, because the information needed is
+the *shape* of the response, not the height of one sample. Only deconvolution
+closes the gap.
+
+Two consequences worth carrying into M2 and M5:
+
+1. The headline comparison should be a learned model against the **threshold at
+   its own optimum**, not at a fixed 3 sigma. On L2 those coincide; on L0 they
+   differ by 0.04 IoU, which is the kind of gap a careless baseline invents.
+2. A model scoring foreground IoU well above ~0.55 on clean data has genuinely
+   learned to deconvolve, not merely to threshold. That is a sharper and more
+   interesting claim than "beats the baseline", and it is measurable.
+
+One practical wrinkle: `n_sigma` is meaningless on a noise-free set, because the
+MAD noise estimate is zero and the floor in `dataset/preprocess.py` turns the cut
+into an absolute 3 ADC. That is why the L0 optimum sits at "8 sigma" -- it is
+really 8 ADC. The floor is still the right behaviour (it keeps the normalisation
+finite), but the units stop meaning what they say once noise is off.
+
+### 9.10 Still open from M1
 
 - The notebook tour (`notebooks/01_generator_tour.ipynb`) is not written; `scripts/preview.py`
   covers the same ground from the command line.
