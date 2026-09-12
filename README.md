@@ -12,8 +12,10 @@ the task once, properly, and let experiments adapt instead of restarting.
 
 ## Status
 
-**M1 complete — the generator.** Models, training and evaluation (M2–M5) are not
-built yet; see [PLAN.md §6](PLAN.md).
+**M1 complete** (the generator) and **M2 in place** (classical baselines, a
+semantic U-Net, training, evaluation and the busy-event validation harness).
+Instance segmentation (M3) and the transformer arm (M4) are not built; see
+[PLAN.md §6](PLAN.md).
 
 ```
 layer        module                     what it does
@@ -21,17 +23,65 @@ layer        module                     what it does
 geometry     patt_reco/geometry/        3D primitives, event composition
 detector     patt_reco/detector/        3D -> 2D projection, transport, response
 noise        patt_reco/noise/           incoherent, coherent, 1/f, artefacts
-dataset      patt_reco/dataset/         seeds, sparse storage, HDF5 shards
+dataset      patt_reco/dataset/         seeds, sparse storage, HDF5 shards, torch Dataset
+models       patt_reco/models/          U-Net, registry, classical baselines
+losses       patt_reco/losses/          focal + Dice, class and ambiguity weighting
+train        patt_reco/train/           loop, config, run tracking
+eval         patt_reco/eval/            semantic and differential metrics
 viz          patt_reco/viz/             three-view event displays
 ```
+
+## The four phases
+
+One script per phase. Each prints the command for the next one.
+
+```bash
+# 1. data generation -- the whole ladder, with train/val/test splits
+python scripts/generate.py --all -j 8
+
+# 2. model training
+python scripts/train.py configs/train/base.yaml --overfit   # wiring check first
+python scripts/train.py configs/train/base.yaml
+
+# 3. model testing -- held out, same distribution as training
+python scripts/test.py runs/<run>/best.pt --data data/l2_noise/test --baselines
+
+# 4. model validation -- busy events and out of distribution
+python scripts/validate.py runs/<run>/best.pt --snr 0.5,1,2,4 --baselines
+```
+
+**Phase 3 and phase 4 are different questions.** Phase 3 asks whether the model
+learned the training distribution. Phase 4 asks whether it learned the *task* --
+crowded events it never trained on, shapes it never saw, and a detector outside
+its training envelope. A model can do well at the first and fail the second, and
+that gap is the whole point of the project.
+
+Splits are separate **seeds**, not slices: since `(seed, index)` determines an
+event, different seeds cannot overlap, so leakage is impossible by construction
+rather than by careful bookkeeping.
+
+Run `--overfit` before believing any training run. It drives a single batch to
+near-zero loss; if that fails, nothing else about the run is worth reading.
 
 ## Install
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
-pip install -e ".[dev]"
-pytest -q                 # 69 tests, ~1 s
+pip install -e ".[dev]"           # generator only: numpy, scipy, h5py, matplotlib
+pip install -e ".[dl,dev]"        # + torch, for phases 2-4
+pytest -q                         # 120 tests, ~3 s
 ```
+
+**On torch and CUDA:** install a build that matches your *driver*, not the newest
+one. A CUDA 13 wheel silently falls back to CPU on a driver that only supports
+CUDA 12.x, and the only sign is `torch.cuda.is_available() == False`. On driver
+535 (CUDA 12.2) the working choice is
+
+```bash
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+```
+
+Every phase script prints which device it is using and why.
 
 ## Use
 
