@@ -38,6 +38,12 @@ class OptimConfig:
     epochs: int = 20
     grad_clip: float = 1.0
 
+    # How many epochs a model needs depends on the dataset size, so an epoch
+    # count that is correct at one n_train silently under-trains at another:
+    # 8 epochs is 1000 steps at 4000 images/class and 24 at 100/class. This
+    # expresses the budget in the unit that actually governs convergence.
+    min_steps: int = 0       # 0 disables; otherwise a floor on total steps
+
 
 @dataclass(frozen=True)
 class RunConfig:
