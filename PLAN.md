@@ -38,16 +38,45 @@ seed and per-split counts.
 distinct index range, so splits never overlap and generation is bit-identical
 however it is run.
 
-## 4. Status
+## 4. Model and training
 
-The generator is rebuilt and clean: geometry primitives, the rasteriser, the
-npz dataset builder, a torch `Dataset` over a split, and greyscale display.
-The classifier and training loop are **not built**.
+The baseline classifier is deliberately the smallest thing that could work:
+one convolution, one max pool, one dense layer, one output layer. It is not
+tuned. The point of building it first is to have a *measured* baseline that
+later architectures can be compared against, rather than an assumed one.
 
-## 5. Next
+- **Loss** — cross-entropy over `N_CLASSES` logits, not a single logit, so a
+  third shape class stays a config change rather than a rewrite.
+- **Data** — the npz splits, read through `ImageDataset`.
+- **Optimisation** — AdamW, a cosine schedule over the whole run, gradient
+  clipping. No mixed precision or accumulation; the model is tiny.
+- **Metrics** — accuracy, per-class recall, the confusion matrix and ROC-AUC,
+  all computed in-repo.
 
-- a small CNN classifier;
-- a simple training loop;
-- accuracy and confusion metrics.
+Every run writes a directory holding its config, its environment, a metrics
+CSV and checkpoints. A checkpoint carries the model config and image size, so
+it can be evaluated without the training config.
 
-To be planned separately, once the generated images look right.
+## 5. Status
+
+The generator and the training half are both built and working end to end:
+generate, preview, build splits, train, evaluate.
+
+**The baseline already saturates the task.** On the 128x128 set it reaches
+accuracy 1.0000 and ROC-AUC 1.0000 on the 2000-image test split, with a
+perfectly diagonal confusion matrix, after a single epoch. That is a real
+result, not a bug: as configured, the two classes are trivially separable.
+
+## 6. Open questions
+
+Both are for after the baseline runs, and the first depends on the second.
+
+1. **Which architectural change is worth making?** To be decided against the
+   measured baseline rather than guessed. This question is currently
+   unanswerable: accuracy is saturated, so every candidate scores 1.0 and
+   nothing can be ranked.
+2. **How hard can the task be made before the model fails?** The knobs are
+   smaller images, shorter tracks, a tighter shower opening angle and less
+   transverse spread, and fewer training images. Near-perfect accuracy is a
+   reason to move here, not a reason to stop — until the task discriminates
+   between models, question 1 has no measurable answer.
