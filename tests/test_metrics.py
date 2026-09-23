@@ -12,7 +12,8 @@ import pytest
 
 from patt_reco.config import CLASS_NAMES, SHOWER, TRACK
 from patt_reco.train.metrics import (accuracy, confusion_matrix, format_report,
-                                     per_class_recall, roc_auc)
+                                     per_class_precision, per_class_recall,
+                                     roc_auc)
 
 
 def brute_force_auc(y_true, scores):
@@ -122,6 +123,75 @@ def test_recall_catches_a_collapsed_classifier():
 
 
 # --------------------------------------------------------------------------- #
+# per-class precision -- "purity"
+# --------------------------------------------------------------------------- #
+
+
+def test_purity_is_column_wise_where_efficiency_is_row_wise():
+    """The pair is the transpose trap again, and the gate reads both. An
+    asymmetric matrix is the only case that tells them apart."""
+    # 4 true tracks: 3 called track, 1 called shower
+    # 2 true showers: 1 called track, 1 called shower
+    cm = np.array([[3, 1], [1, 1]])
+
+    # of the 4 predicted track, 3 were track; of the 2 predicted shower, 1 was
+    assert per_class_precision(cm) == pytest.approx([0.75, 0.5])
+    # of the 4 true track, 3 were caught; of the 2 true shower, 1 was
+    assert per_class_recall(cm) == pytest.approx([0.75, 0.5])
+
+    # now break the symmetry so the two genuinely differ
+    cm = np.array([[3, 1], [3, 1]])
+    assert per_class_precision(cm) == pytest.approx([0.5, 0.5])
+    assert per_class_recall(cm) == pytest.approx([0.75, 0.25])
+
+
+def test_a_class_never_predicted_has_undefined_purity():
+    """Mirrors per_class_recall's nan convention, and the gate relies on it:
+    nan propagates through min and fails the comparison."""
+    cm = np.array([[5, 0], [3, 0]])          # nothing was ever called shower
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        purity = per_class_precision(cm)
+
+    assert purity[TRACK] == pytest.approx(5 / 8)
+    assert np.isnan(purity[SHOWER])
+
+
+def test_an_undefined_purity_fails_the_gate_rather_than_being_skipped():
+    """`evaluate.py` takes the min over classes and compares it to the bar. A
+    class that was never predicted must not quietly drop out of that min."""
+    cm = confusion_matrix([TRACK] * 5 + [SHOWER] * 3, [TRACK] * 8)
+    worst = per_class_precision(cm).min()
+
+    assert np.isnan(worst)
+    assert not (worst >= 0.90)               # nan comparisons are False: FAIL
+
+
+def test_purity_and_efficiency_read_a_shower_biased_model_from_each_side():
+    """The asymmetry PLAN.md tracks: over-predicting shower costs shower
+    purity and track efficiency, and leaves the other two comfortable."""
+    # every track image called shower half the time; showers all caught
+    cm = confusion_matrix([TRACK] * 100 + [SHOWER] * 100,
+                          [TRACK] * 50 + [SHOWER] * 50 + [SHOWER] * 100)
+    purity = per_class_precision(cm)
+    efficiency = per_class_recall(cm)
+
+    assert purity[TRACK] == 1.0                      # comfortable
+    assert efficiency[SHOWER] == 1.0                 # comfortable
+    assert purity[SHOWER] == pytest.approx(2 / 3)    # binding
+    assert efficiency[TRACK] == 0.5                  # binding
+
+
+def test_a_perfect_classifier_has_unit_purity_and_efficiency():
+    y = [0, 1, 1, 0, 1]
+    cm = confusion_matrix(y, y)
+
+    assert per_class_precision(cm) == pytest.approx([1.0, 1.0])
+    assert per_class_recall(cm) == pytest.approx([1.0, 1.0])
+
+
+# --------------------------------------------------------------------------- #
 # roc auc
 # --------------------------------------------------------------------------- #
 
@@ -185,6 +255,25 @@ def test_auc_still_reads_a_collapsed_classifier():
 # --------------------------------------------------------------------------- #
 # report
 # --------------------------------------------------------------------------- #
+
+
+def test_the_report_names_purity_and_efficiency_with_their_statistical_names():
+    """patt_reco-5mi: the user's vocabulary, with the statistical name in
+    parentheses once, so the mapping is unambiguous."""
+    report = format_report([TRACK, SHOWER], [TRACK, SHOWER], [0.1, 0.9])
+
+    assert "purity (precision)" in report
+    assert "efficiency (recall)" in report
+
+
+def test_the_report_shows_both_per_class_columns():
+    cm_true = [TRACK] * 4 + [SHOWER] * 2
+    cm_pred = [TRACK] * 3 + [SHOWER] * 3
+    report = format_report(cm_true, cm_pred, [0.1, 0.2, 0.3, 0.8, 0.7, 0.9])
+
+    cm = confusion_matrix(cm_true, cm_pred)
+    for value in (*per_class_precision(cm), *per_class_recall(cm)):
+        assert f"{value:.4f}" in report
 
 
 def test_the_report_carries_the_numbers_and_the_class_names():
