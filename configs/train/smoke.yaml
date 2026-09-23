@@ -1,0 +1,33 @@
+# The smallest run that still exercises every code path: data loading, the
+# training loop, validation, metrics, checkpointing and the run directory.
+# Use it to check the wiring before committing to a real run.
+#
+# Its accuracy is NOT meaningful -- two epochs on batches of 16 says nothing
+# about how well the model can separate the classes. Only use it to confirm
+# that the run completes and writes what it should.
+
+# Identical to base.yaml: the smoke run must test the architecture that will
+# actually be trained.
+model:
+  n_filters: 16
+  kernel_size: 3
+  pool: 4
+  hidden: 64
+  dropout: 0.0
+
+data:
+  root: data/tracks_vs_showers
+  batch_size: 16
+  num_workers: 0      # in-process, so a failure is a real traceback
+
+optim:
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  epochs: 2
+  grad_clip: 1.0
+
+run:
+  out_dir: runs
+  name: smoke
+  seed: 0
+  log_every: 20
