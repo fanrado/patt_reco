@@ -1,26 +1,26 @@
-"""patt_reco -- an experiment-independent pattern-recognition benchmark.
+"""patt_reco -- synthetic images of lines and shower-like shapes.
 
-Synthetic 3D events (tracks, scattered tracks, helices, rings, showers, blobs)
-rendered into 2D stereo readout views with realistic charge transport, detector
-response and noise, together with exact per-pixel semantic and instance truth.
+A small, self-contained generator for binary pattern recognition: every image
+holds exactly one object, either a track (a straight or curved line) or a
+shower (a branching spray of scattered points). The two classes differ by
+shape alone -- there is no detector, no noise, and no intensity pattern to
+learn instead.
 
-    from patt_reco import DatasetConfig, generate_event, plot_event
+    from patt_reco import SourceConfig, generate_event, plot_image
 
-    rec = generate_event(DatasetConfig(), index=0)
-    plot_event(rec)
+    image, label = generate_event(SourceConfig(kind="track"), index=0)
+    plot_image(image, label)
 """
-from .config import (CLASS_NAMES, DatasetConfig, DetectorConfig, EventConfig,
-                     GeometryConfig, NoiseConfig, N_CLASSES, load_yaml)
-from .dataset.generate import generate_dataset, generate_event, generate_from_yaml
-from .dataset.io_hdf5 import DatasetReader, ShardReader
-from .dataset.schema import EventRecord
-from .viz.event_display import plot_event
+from .config import (CLASS_NAMES, N_CLASSES, RenderConfig, SHOWER, ShowerConfig,
+                     SourceConfig, TRACK, TrackConfig, load_yaml)
+from .dataset.build import build_dataset
+from .dataset.generate import generate_event
+from .viz.display import plot_image
 
 __version__ = "0.0.1"
 
 __all__ = [
-    "CLASS_NAMES", "N_CLASSES", "DatasetConfig", "DetectorConfig", "EventConfig",
-    "GeometryConfig", "NoiseConfig", "load_yaml", "generate_dataset",
-    "generate_event", "generate_from_yaml", "DatasetReader", "ShardReader",
-    "EventRecord", "plot_event",
+    "CLASS_NAMES", "N_CLASSES", "TRACK", "SHOWER",
+    "RenderConfig", "ShowerConfig", "SourceConfig", "TrackConfig",
+    "load_yaml", "build_dataset", "generate_event", "plot_image",
 ]
