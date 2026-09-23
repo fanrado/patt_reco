@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from patt_reco.cliutil import apply_overrides
 from patt_reco.dataset.torch_dataset import ImageDataset
 from patt_reco.models import CNN
 from patt_reco.train import Run, Trainer, load_train_yaml
@@ -47,12 +48,18 @@ def main() -> None:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("config", type=Path, help="a YAML training config")
     parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
+    parser.add_argument("--set", dest="overrides", action="append", default=[],
+                        metavar="PATH=VALUE",
+                        help="override a training config field, e.g. "
+                             "--set optim.epochs=8. Repeatable. Applied before the "
+                             "run directory is created, so config.json records what "
+                             "was actually trained.")
     parser.add_argument("--overfit", action="store_true",
                         help="drive one batch to near-zero loss and exit; "
                              "a wiring check, so no run directory is created")
     args = parser.parse_args()
 
-    cfg = load_train_yaml(args.config)
+    cfg = apply_overrides(load_train_yaml(args.config), args.overrides)
     device = pick_device(args.device)
 
     torch.manual_seed(cfg.run.seed)
