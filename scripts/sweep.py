@@ -26,9 +26,12 @@ EASY_HARD = {
     "shower.open_angle": ((0.20, 0.55), (0.02, 0.06)),
     "shower.spread": ((0.01, 0.03), (0.001, 0.004)),
     "shower.max_nodes": (200, 7),
-    # the floor matters as much as the ceiling: leaving perfectly straight
-    # lines in the set hands the model a giveaway unrelated to the shower side
-    "track.curvature": ((0.0, 2.2), (0.5, 3.0)),
+    # track.curvature is deliberately NOT swept. Raising its floor was meant to
+    # remove the "straight => track" giveaway, but alongside the shower rows it
+    # only inverted it: every hard shower became near-straight and every hard
+    # track an arc, so curvature stayed decisive and the curve stayed flat.
+    # Overlapping two classes means moving one of them toward the other, not
+    # both past each other -- so tracks keep their own [0.0, 2.2].
 }
 
 
