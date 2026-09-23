@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "patt_reco"
 version = "0.0.1"
-description = "Synthetic line vs shower image generation for binary pattern recognition"
+description = "Synthetic line vs shower image generation, and a CNN classifier trained on them, for binary pattern recognition"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
