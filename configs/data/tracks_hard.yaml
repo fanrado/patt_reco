@@ -8,12 +8,17 @@
 # classes trading identities.
 #
 # MEASURED at this point, paired with showers_hard.yaml: baseline test
-# accuracy 0.9015, ROC-AUC 0.9689, 197 wrong of 2000 -- inside the 0.75-0.95
+# accuracy 0.8325, ROC-AUC 0.9289, 335 wrong of 2000 -- inside the 0.75-0.95
 # target band. The small training set is part of the operating point: the
 # corrected axis alone still saturates at 4000/class (1.0000), so n_train is
-# 250 while n_val and n_test stay large to keep the metric precise. The
+# 100 while n_val and n_test stay large to keep the metric precise. The
 # benchmark therefore measures shape ambiguity AND sample efficiency; errors
-# run in both directions at ~0.50 confidence, so the ambiguity is real.
+# run in both directions at low confidence, so the ambiguity is real.
+#
+# Why 100 and not 250: at n_train=250 the baseline scores 0.9015, sitting
+# directly on the 90% acceptance threshold, where run-to-run noise alone would
+# flip a PASS/FAIL verdict and a better model would have no headroom. 0.8325
+# leaves about seven points to win.
 #
 # SUPERSEDED: the earlier 0.9995 figure came from the inverted axis, which
 # raised this file's curvature floor to 0.5 and made curvature alone decisive.
@@ -23,7 +28,7 @@ kind: track
 label: 0
 seed: 3001
 
-n_train: 250
+n_train: 100
 n_val: 500
 n_test: 1000
 
