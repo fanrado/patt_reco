@@ -20,7 +20,7 @@ from patt_reco.config import CLASS_NAMES
 from patt_reco.dataset.torch_dataset import ImageDataset
 from patt_reco.models import CNN
 from patt_reco.train.metrics import (accuracy, confusion_matrix, format_report,
-                                     per_class_recall, roc_auc)
+                                     per_class_precision, per_class_recall, roc_auc)
 from patt_reco.viz.display import plot_grid
 
 
@@ -56,6 +56,9 @@ def main() -> None:
     parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     parser.add_argument("--n-worst", type=int, default=16,
                         help="how many misclassifications to plot")
+    parser.add_argument("--threshold", type=float, default=0.90,
+                        help="the bar each of accuracy, purity and efficiency "
+                             "must clear (default 0.90)")
     args = parser.parse_args()
 
     use_cuda = (args.device == "cuda"
@@ -75,13 +78,42 @@ def main() -> None:
 
     out_dir = args.checkpoint.parent
     cm = confusion_matrix(y_true, y_pred)
+    purity = per_class_precision(cm)
+    efficiency = per_class_recall(cm)
+
+    # The WORST class, not the mean: a mean hides one class failing. nan (a
+    # class never predicted, or absent from the truth) propagates through min
+    # and fails the comparison, which is the right verdict.
+    bar = args.threshold
+    checks = [
+        ("accuracy", accuracy(y_true, y_pred)),
+        ("purity (min over classes)", float(purity.min())),
+        ("efficiency (min over classes)", float(efficiency.min())),
+    ]
+    passed = {name: bool(value >= bar) for name, value in checks}
+    overall = all(passed.values())
+
+    print(f"\ngate, threshold {bar:.2f}")
+    for name, value in checks:
+        print(f"  {name:<30} {value:.4f}   {'PASS' if passed[name] else 'FAIL'}")
+    print(f"  {'overall':<30} {'':>6}   {'PASS' if overall else 'FAIL'}")
+
     report = {
         "accuracy": accuracy(y_true, y_pred),
+        "per_class_purity": {CLASS_NAMES.get(i, str(i)): float(v)
+                             for i, v in enumerate(purity)},
         "per_class_recall": {CLASS_NAMES.get(i, str(i)): float(r)
-                             for i, r in enumerate(per_class_recall(cm))},
+                             for i, r in enumerate(efficiency)},
         "confusion_matrix": cm.tolist(),
         "confusion_matrix_note": "rows are true classes, columns predicted",
         "roc_auc": roc_auc(y_true, scores),
+        "gate": {
+            "threshold": bar,
+            "accuracy": {"value": checks[0][1], "pass": passed[checks[0][0]]},
+            "purity_min": {"value": checks[1][1], "pass": passed[checks[1][0]]},
+            "efficiency_min": {"value": checks[2][1], "pass": passed[checks[2][0]]},
+            "verdict": "PASS" if overall else "FAIL",
+        },
         "checkpoint": str(args.checkpoint),
         "data": str(args.data),
         "n_images": int(len(dataset)),
