@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from patt_reco.cliutil import apply_overrides
 from patt_reco.config import CLASS_NAMES, load_yaml
 from patt_reco.dataset.build import SPLITS, build_dataset
 
@@ -29,14 +30,23 @@ def main() -> None:
                         help="output directory (default: data/<first config name>)")
     parser.add_argument("--shuffle-seed", type=int, default=0,
                         help="seed for the within-split shuffle")
+    parser.add_argument("--set", dest="overrides", action="append", default=[],
+                        metavar="PATH=VALUE",
+                        help="override a config field, e.g. --set render.height=32. "
+                             "Repeatable. Applied to EVERY source: a SourceConfig "
+                             "always carries both a track and a shower block, so "
+                             "--set shower.max_nodes=7 simply has no effect on a "
+                             "track source. This is how the difficulty sweep is built.")
     args = parser.parse_args()
 
-    sources = [load_yaml(path) for path in args.configs]
+    sources = [apply_overrides(load_yaml(path), args.overrides)
+               for path in args.configs]
     out = args.out or Path("data") / sources[0].name
 
     for cfg, path in zip(sources, args.configs):
+        overrides = f"  --set {' --set '.join(args.overrides)}" if args.overrides else ""
         print(f"{cfg.name:<12} {cfg.kind:<7} label {cfg.label}  seed {cfg.seed}  "
-              f"{cfg.n_train}/{cfg.n_val}/{cfg.n_test}  ({path})")
+              f"{cfg.n_train}/{cfg.n_val}/{cfg.n_test}  ({path}){overrides}")
 
     start = time.time()
     build_dataset(sources, out, shuffle_seed=args.shuffle_seed)
