@@ -59,6 +59,7 @@ def trained(tmp_path):
     comparison. That is correct, but it means a passing gate needs a model
     that has actually learned something.
     """
+    torch.manual_seed(0)          # the model init draws from the global RNG
     g = torch.Generator().manual_seed(0)
     labels = (np.arange(40) % 2).astype(np.uint8)
     images = 0.05 * torch.randn(40, 1, SIZE, SIZE, generator=g)
@@ -112,52 +113,67 @@ def collapsed(tmp_path):
     return Run(cfg).save(model, "best.pt"), data
 
 
+def _brightness_classifier(cfg, threshold: float):
+    """A CNN wired by hand to predict shower iff the image is brighter than
+    `threshold`.
+
+    Nothing here is trained and nothing is random, so the confusion matrix is
+    whatever the brightnesses say it is. An earlier version of this fixture
+    trained a model and tilted its head by a quantile of the track margins;
+    that depended on the global torch RNG for its initialisation, and after
+    120 steps the margins often collapsed to one identical value, which put
+    every track exactly on the decision boundary and made the fixture error.
+
+    The wiring: filter 0 of the convolution is an identity tap, so the pooled
+    feature is the pixel value; row 0 of the dense layer averages it; and the
+    head compares that against a constant.
+    """
+    model = build_model(cfg, SIZE, SIZE)
+    npix = (SIZE // cfg.pool) ** 2
+    with torch.no_grad():
+        for p_ in model.parameters():
+            p_.zero_()
+        model.conv.weight[0, 0, 1, 1] = 1.0          # identity tap
+        model.dense.weight[0, :npix] = 1.0 / npix    # mean of filter 0
+        model.head.weight[1, 0] = 1.0                # logit1 = brightness
+        model.head.bias[0] = threshold               # logit0 = threshold
+    model.eval()
+    return model
+
+
+def _flat_images(brightness):
+    return np.stack([np.full((SIZE, SIZE), b, dtype=np.float32) for b in brightness])
+
+
 @pytest.fixture
 def asymmetric(tmp_path):
     """A checkpoint that is strong on one class and weak on the other.
 
     The gate reads the worst class, and a symmetric model cannot show that:
-    when both classes score alike, the minimum and the mean coincide and a
-    gate computed either way looks identical. This fixture leans the head
-    toward shower, reproducing the asymmetry PLAN.md tracks, so the two
-    differ.
+    when both classes score alike the minimum and the mean coincide, and a
+    gate computed either way looks identical. This builds a deliberately
+    lopsided one -- 9 of 30 tracks misread as shower, every shower caught --
+    which is the one-sided asymmetry PLAN.md tracks.
+
+    The confusion matrix is fixed by construction at [[21, 9], [0, 30]]:
+      purity     [1.0, 0.769]  -> min 0.769 < mean 0.885
+      efficiency [0.7, 1.0]    -> min 0.700 < mean 0.850
     """
-    g = torch.Generator().manual_seed(0)
-    labels = (np.arange(60) % 2).astype(np.uint8)
-    images = 0.05 * torch.randn(60, 1, SIZE, SIZE, generator=g)
-    images += torch.from_numpy(labels).view(-1, 1, 1, 1).float()
+    labels = np.array([0] * 30 + [1] * 30, dtype=np.uint8)
+    brightness = [0.2] * 21 + [0.8] * 9 + [0.9] * 30
+    images = _flat_images(brightness)
 
     base = TrainConfig()
     cfg = replace(base, model=ModelConfig(n_filters=4, pool=2, hidden=8),
                   run=replace(base.run, out_dir=str(tmp_path / "runs"), name="skew"))
-    model = build_model(cfg.model, SIZE, SIZE)
+    model = _brightness_classifier(cfg.model, threshold=0.5)
 
-    y = torch.from_numpy(labels).long()
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-2)
-    for _ in range(120):
-        opt.zero_grad()
-        torch.nn.functional.cross_entropy(model(images), y).backward()
-        opt.step()
-    model.eval()
-
-    # Tilt the head toward shower by a computed amount rather than by
-    # searching: adding b to the class-1 logit flips a track exactly when b
-    # exceeds that track's margin, so the 70th percentile of those margins
-    # misreads 30% of tracks. Raising the class-1 logit can never turn a
-    # shower into a track, so shower efficiency stays at 1.0 and the
-    # asymmetry is one-sided, as PLAN.md describes it.
-    with torch.no_grad():
-        logits = model(images)
-        margins = (logits[:, 0] - logits[:, 1])[torch.from_numpy(labels) == 0]
-        model.head.bias[1] += float(torch.quantile(margins, 0.70))
-
-        pred = model(images).argmax(1).numpy()
-    assert 0 < ((labels == 0) & (pred == 1)).sum() < (labels == 0).sum()
-    assert ((labels == 1) & (pred == 0)).sum() == 0
+    pred = model(torch.from_numpy(images).unsqueeze(1)).argmax(1).numpy()
+    assert ((labels == 0) & (pred == 1)).sum() == 9, "fixture is not lopsided"
+    assert ((labels == 1) & (pred == 0)).sum() == 0, "showers should all be caught"
 
     data = tmp_path / "test.npz"
-    np.savez_compressed(data, images=images.squeeze(1).numpy().astype(np.float32),
-                        labels=labels)
+    np.savez_compressed(data, images=images, labels=labels)
     return Run(cfg).save(model, "best.pt"), data
 
 
