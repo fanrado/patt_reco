@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Render event displays from a config or a generated dataset.
+"""Render sample images from one shape config, to eyeball it.
 
-    python scripts/preview.py configs/data/l3_busy.yaml -n 4 -o /tmp/l3
-    python scripts/preview.py data/l2_noise -n 4 -o /tmp/l2      # from disk
+    python scripts/preview.py configs/data/tracks.yaml -n 8 -o previews/
 """
 from __future__ import annotations
 
@@ -14,42 +13,34 @@ matplotlib.use("Agg")
 
 from patt_reco.config import load_yaml
 from patt_reco.dataset.generate import generate_event
-from patt_reco.dataset.io_hdf5 import DatasetReader
-from patt_reco.viz.event_display import plot_event
+from patt_reco.viz.display import plot_grid
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", type=Path, help="a YAML config or a dataset directory")
-    parser.add_argument("-n", "--n-events", type=int, default=4)
-    parser.add_argument("-i", "--start", type=int, default=0)
+    parser.add_argument("config", type=Path, help="a YAML shape config")
+    parser.add_argument("-n", "--n-images", type=int, default=8)
     parser.add_argument("-o", "--out", type=Path, default=Path("previews"))
-    parser.add_argument("--panels", default="adc,semantic,instance")
+    parser.add_argument("--ncols", type=int, default=8)
     parser.add_argument("--dpi", type=int, default=110)
     args = parser.parse_args()
 
+    cfg = load_yaml(args.config)
+    pairs = [generate_event(cfg, i) for i in range(args.n_images)]
+    images = [image for image, _ in pairs]
+    labels = [label for _, label in pairs]
+
     args.out.mkdir(parents=True, exist_ok=True)
-    panels = tuple(args.panels.split(","))
+    path = args.out / f"{cfg.name}.png"
 
-    if args.source.is_dir():
-        from patt_reco.config import DatasetConfig, _build
-        reader = DatasetReader(args.source)
-        # a dataset on disk carries the config it was made with
-        noise_cfg = _build(DatasetConfig, reader.manifest["config"]).noise
-        records = [reader[i] for i in range(args.start,
-                                            min(args.start + args.n_events, len(reader)))]
-    else:
-        cfg = load_yaml(args.source)
-        noise_cfg = cfg.noise
-        records = [generate_event(cfg, i) for i in range(args.start, args.start + args.n_events)]
+    fig = plot_grid(images, labels, ncols=args.ncols)
+    fig.savefig(path, dpi=args.dpi)
+    fig.clf()
 
-    for rec in records:
-        fig = plot_event(rec, noise_cfg=noise_cfg, panels=panels)
-        path = args.out / f"event_{rec.index:05d}.png"
-        fig.savefig(path, dpi=args.dpi)
-        fig.clf()
-        print(f"  {path}  ({rec.n_objects} objects, occupancy {rec.meta.get('occupancy', 0):.1%})")
+    filled = sum(float((image > 0).mean()) for image in images) / max(len(images), 1)
+    print(f"  {path}  ({len(images)} {cfg.kind} images, "
+          f"{cfg.render.height}x{cfg.render.width}, mean fill {filled:.1%})")
 
 
 if __name__ == "__main__":
