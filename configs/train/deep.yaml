@@ -1,0 +1,32 @@
+# The depth variant: identical to base.yaml except for model.n_blocks.
+#
+# It exists to test exactly ONE change against the baseline -- convolutional
+# depth. Every other field is held fixed deliberately: same filters, kernel,
+# pool, hidden width, dropout, learning rate, weight decay, step budget,
+# batch size and seed. If the result differs from the baseline, depth is the
+# only thing it can be attributed to.
+model:
+  n_filters: 16
+  kernel_size: 3
+  pool: 4
+  hidden: 64
+  dropout: 0.0
+  n_blocks: 3          # THE ONE CHANGE (baseline is 1)
+
+data:
+  root: data/tracks_vs_showers
+  batch_size: 16
+  num_workers: 4
+
+optim:
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  epochs: 8
+  min_steps: 600
+  grad_clip: 1.0
+
+run:
+  out_dir: runs
+  name: deep
+  seed: 0
+  log_every: 20
