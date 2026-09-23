@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 
 from patt_reco.config import CLASS_NAMES
 from patt_reco.dataset.torch_dataset import ImageDataset
-from patt_reco.models import CNN
+from patt_reco.models import build_model
 from patt_reco.train.metrics import (accuracy, confusion_matrix, format_report,
                                      per_class_precision, per_class_recall, roc_auc)
 from patt_reco.viz.display import plot_grid
@@ -27,10 +27,8 @@ from patt_reco.viz.display import plot_grid
 def load_model(path: Path):
     """Rebuild the model from the checkpoint alone -- no training config needed."""
     checkpoint = torch.load(path, map_location="cpu", weights_only=False)
-    m = checkpoint["config"].model
-    model = CNN(checkpoint["height"], checkpoint["width"],
-                n_filters=m.n_filters, kernel_size=m.kernel_size, pool=m.pool,
-                hidden=m.hidden, dropout=m.dropout, n_blocks=m.n_blocks)
+    model = build_model(checkpoint["config"].model,
+                        checkpoint["height"], checkpoint["width"])
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     return model
