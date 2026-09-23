@@ -56,7 +56,7 @@ def main() -> None:
     size = _dir_size(out)
     print(f"\n{total} images in {out}, {size / 1e6:.1f} MB, in {elapsed:.1f} s "
           f"({1000 * elapsed / max(total, 1):.1f} ms/image)")
-    print(f"next: python scripts/preview.py {out}")
+    print(f"next: python scripts/preview.py {args.configs[0]} -n 8")
 
 
 if __name__ == "__main__":
