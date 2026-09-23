@@ -34,12 +34,28 @@ def confusion_matrix(y_true, y_pred, n_classes: int = N_CLASSES) -> np.ndarray:
 def per_class_recall(cm) -> np.ndarray:
     """Fraction of each true class that was predicted correctly (row-wise).
 
+    This quantity is called **efficiency** in the project's vocabulary.
+
     A class absent from the truth has undefined recall and yields nan.
     """
     cm = np.asarray(cm, dtype=float)
     support = cm.sum(axis=1)
     with np.errstate(invalid="ignore", divide="ignore"):
         return np.where(support > 0, np.diag(cm) / support, np.nan)
+
+
+def per_class_precision(cm) -> np.ndarray:
+    """Fraction of each predicted class that was correct (column-wise).
+
+    This quantity is called **purity** in the project's vocabulary: of
+    everything labelled class c, how much really was class c.
+
+    A class that was never predicted has undefined precision and yields nan.
+    """
+    cm = np.asarray(cm, dtype=float)
+    predicted = cm.sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(predicted > 0, np.diag(cm) / predicted, np.nan)
 
 
 def _average_ranks(x: np.ndarray) -> np.ndarray:
@@ -78,15 +94,17 @@ def roc_auc(y_true, scores) -> float:
 def format_report(y_true, y_pred, scores) -> str:
     """A short human-readable summary of a set of predictions."""
     cm = confusion_matrix(y_true, y_pred)
-    recall = per_class_recall(cm)
+    purity = per_class_precision(cm)
+    efficiency = per_class_recall(cm)
     names = [CLASS_NAMES.get(i, str(i)) for i in range(cm.shape[0])]
     width = max(len(n) for n in names)
 
     lines = [f"accuracy   {accuracy(y_true, y_pred):.4f}",
              f"roc auc    {roc_auc(y_true, scores):.4f}",
              "",
-             "recall"]
-    lines += [f"  {name:<{width}}  {r:.4f}" for name, r in zip(names, recall)]
+             f"{'':<{width}}    purity (precision)  efficiency (recall)"]
+    lines += [f"  {name:<{width}}  {p:>16.4f}  {e:>19.4f}"
+              for name, p, e in zip(names, purity, efficiency)]
     lines += ["",
               "confusion (rows = true, columns = predicted)",
               " " * (width + 2) + "".join(f"{n:>8}" for n in names)]
