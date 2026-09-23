@@ -175,17 +175,72 @@ Bidirectional errors at chance confidence are the signature of genuine
 ambiguity. The shapes overlap; the small training set is what stops the model
 memorising its way past that overlap.
 
-## 7. Open questions
+## 7. The step-budget collapse
 
-1. **Training is bimodal at this operating point.** Four seeds gave 0.5000,
-   0.9360, 0.9160, 0.5000 — half collapse to predicting one class, and seed 0
-   is the configured default. The cause is the optimisation budget:
-   `optim.epochs=8` was derived at 4000/class where an epoch is 125 steps
-   (1000 total); at 250/class an epoch is 8 steps and at 100/class only 4, so
-   the same 8 epochs buys 15-30x less optimisation than the measurement
-   assumed. Until epochs or batch size is re-derived for this point, the
-   benchmark's verdict is decided by the seed rather than by the model. This
-   blocks everything below it.
-2. **Which architectural change is worth making?** Now answerable in
-   principle — there is a baseline at 0.8325 with roughly seven points of
-   headroom — but not in practice until question 1 is fixed.
+The second instructive failure, and it belongs beside the inverted axis.
+
+**The symptom.** At the benchmark operating point, training was bimodal. Four
+seeds gave 0.5000, 0.9360, 0.9160, 0.5000. The collapsed runs predicted one
+class for everything — that class's recall at 0.0000, train loss pinned at
+ln2 = 0.6944. Seed 0, the configured default, was one of them, so the
+specified verification run looked like a *benchmark* failure when it was a
+*training* failure.
+
+**The cause — a units bug, not a hyperparameter accident.** `optim.epochs=8`
+was measured at 4000 images/class, where one epoch is 125 steps: a 1000-step
+budget. At 100/class with `batch_size=64` an epoch is 3 steps, so the same 8
+epochs bought 24 — roughly 40x less. The model never escaped the
+constant-output basin before the cosine schedule decayed the learning rate to
+zero.
+
+**The diagnostic that placed the fault.** AUC was 0.7423 even on a collapsed
+run. The convolution had learnt something; only the classifier head had not.
+A degenerate head and a featureless model look identical in accuracy and
+completely different in AUC.
+
+**The lesson, stated generally: an epoch count does not transfer across
+dataset sizes.** A training config that is correct at one `n_train` silently
+under-trains at another, and nothing in the output says so. Hence
+`optim.min_steps`, which expresses the budget in the unit that actually
+governs convergence, and the loop now prints the resolved budget at startup —
+steps per epoch, effective epochs, total steps — so the discrepancy can never
+be invisible again.
+
+### The measured baseline
+
+Five seeds at the operating point, after the fix. Zero collapses:
+
+| seed | accuracy | AUC | recall track | recall shower |
+|---|---|---|---|---|
+| 0 | 0.9195 | 0.9553 | 0.8920 | 0.9470 |
+| 1 | 0.8770 | 0.9190 | 0.7810 | 0.9730 |
+| 2 | 0.9030 | 0.9319 | 0.8370 | 0.9690 |
+| 3 | 0.8710 | 0.9095 | 0.7720 | 0.9700 |
+| 4 | 0.8845 | 0.9128 | 0.8280 | 0.9410 |
+
+**Mean accuracy 0.8910, sd 0.0179, spread 0.0485; mean AUC 0.9257.** This
+supersedes the earlier single-seed 0.8325, which was measured while training
+was bimodal and came from a run that happened to converge.
+
+Note the systematic asymmetry: mean track recall 0.8220 against shower recall
+0.9600. The model leans toward predicting shower in every seed, so part of
+what a better architecture can win here is that imbalance.
+
+**Evaluation practice.** Because a single seed was able to decide pass or
+fail, gate measurements are reported across seeds, never from one. The spread
+of 0.0485 also sets a floor on what counts as a real difference: two models
+within about 0.05 of each other have not been distinguished.
+
+## 8. Open questions
+
+1. **The step budget cured the collapse and introduced overfitting.** At 1001
+   steps on 200 images, train loss reaches 0.0004 while validation loss
+   rises, and the model is now confidently wrong on the ambiguous cases it
+   used to be uncertain about — the worst errors sit at 0.97-1.00 confidence
+   rather than 0.58-0.61. Accuracy is unaffected (0.9185 on the default seed)
+   and `best.pt` is selected on validation accuracy, so the benchmark still
+   works; but `min_steps=1000` may be more budget than 200 images want.
+2. **Which architectural change is worth making?** Finally answerable: there
+   is a stable multi-seed baseline at 0.8910 with about six points of
+   headroom, a known error asymmetry to attack, and a spread that says
+   improvements under 0.05 are not yet real.
