@@ -1,0 +1,31 @@
+# The shower class: a branching spray of scattered points, one per image.
+#
+# Counts and render size match tracks.yaml -- build_dataset rejects sources
+# that disagree on image size, and matching counts keep the set balanced.
+#
+# `spread` is what stops a branch reading as a clean line, and `open_angle`
+# is what opens the cascade into a cone; together they are what make this
+# class distinguishable from a curved track by shape alone.
+name: showers
+kind: shower
+label: 1
+seed: 2002
+
+n_train: 4000
+n_val: 1000
+n_test: 1000
+
+shower:
+  max_nodes: 200           # bounds the cascade; growth is breadth-first
+  seg_len: [0.10, 0.20]
+  open_angle: [0.20, 0.55] # half-angle at a split, radians
+  split_frac: 2.0          # Beta(a, a): sibling segments differ, on average 1.0
+  spread: [0.01, 0.03]     # transverse jitter -- scattered points, not lines
+  value: [0.5, 1.5]        # per-point variation only; carries no interpretation
+  step: 0.004
+
+render:
+  height: 128
+  width: 128
+  margin: 0.08
+  view: [0.0, 0.0, 1.0]
