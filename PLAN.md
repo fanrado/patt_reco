@@ -221,8 +221,10 @@ Five seeds at the operating point, after the fix. Zero collapses:
 **Mean accuracy 0.8910, sd 0.0179, spread 0.0485; mean AUC 0.9257.** This
 supersedes the earlier single-seed 0.8325, which was measured while training
 was bimodal and came from a run that happened to converge. These figures are
-at `min_steps=1000`; the calibration below settles on 600 and restates the
-baseline as 0.8926.
+at `min_steps=1000`; the calibration below settles on **600**, and the
+benchmark baseline everywhere else in this document is the calibrated one:
+**accuracy 0.8926, sd 0.0179, spread 0.0490, AUC 0.9264, recall track 0.8264
+and shower 0.9588.**
 
 Note the systematic asymmetry: mean track recall 0.8220 against shower recall
 0.9600. The model leans toward predicting shower in every seed, so part of
@@ -290,13 +292,69 @@ Neither is illegitimate — both are real improvements. But both must be named
 when a result is reported, or the gate will be read as evidence for something
 it did not measure.
 
-## 8. Open questions
+## 8. The third silent-config defect
 
-1. **Which architectural change is worth making?** Finally answerable: there
-   is a stable multi-seed baseline at **0.8926** (sd 0.0179) with about six
-   points of headroom, and a spread that says improvements under 0.05 are not
-   yet real.
-2. **Two confounds to name in any gate result.** The baseline still overfits
-   somewhat at the calibrated budget, and it is systematically shower-biased.
-   A later model can win on either without separating shapes better. Both are
-   real improvements; neither is the one the benchmark is meant to isolate.
+`configs/train/deep.yaml` was committed and **inert**. Neither
+`scripts/train.py` nor `scripts/evaluate.py` passed `n_blocks` to the CNN
+constructor, so a "deep" run would have built the 1,048,930-parameter
+baseline, logged it under `run.name=deep`, and reported that depth changed
+nothing — a false negative indistinguishable from a real measurement. It was
+caught before it produced one.
+
+That is the third instance of one bug class, and they share a signature:
+
+| defect | the configured thing | what it never reached |
+|---|---|---|
+| inverted difficulty axis | `track.curvature` swept upward | overlap — it swapped the classes instead |
+| epoch budget | `optim.epochs=8` | the optimisation the model needed at a different `n_train` |
+| inert depth | `model.n_blocks=3` | the model constructor |
+
+**A configured value that never reaches what it configures, invisible in the
+output.** In every case the run completed, produced plausible numbers, and
+would have been believed.
+
+The two-line repair fixed the instance. The class is fixed structurally, by
+`build_model(model_cfg, height, width)` in `patt_reco/models/__init__.py`: it
+maps every `ModelConfig` field programmatically instead of by hand, and
+raises on a field the model cannot accept. Neither script now names a config
+field, so a new knob either reaches the model or stops the run.
+
+## 9. The depth result
+
+Five seeds per arm, one variable changed:
+
+| | baseline · 1 block | deep · 3 blocks | |
+|---|---|---|---|
+| accuracy | 0.8926 | **0.9956** | +0.1030, against a 0.0490 spread |
+| ROC-AUC | 0.9264 | 0.9999 | |
+| purity (worst class) | 0.8480 | 0.9929 | +0.1448 |
+| efficiency (worst class) | 0.8264 | 0.9928 | +0.1664 |
+| gate verdict | 0 of 5 | **5 of 5 PASS** | |
+| parameters | 1,048,930 | 39,874 | **26x fewer** |
+| seed spread | 0.0490 | 0.0060 | |
+
+The gain is real by this project's own test: +0.1030 is more than twice the
+baseline's seed spread.
+
+**What depth fixed is the informative part.** The gate was binding on shower
+purity and track efficiency — the same over-prediction of shower seen twice,
+once from each side. Those two metrics gained ~0.15, while the already
+comfortable track purity and shower efficiency gained only ~0.04. Depth
+removed the class asymmetry.
+
+And with **26x fewer parameters**, so this is receptive field, not capacity.
+Three pooled conv blocks suit telling a smooth arc from a kinked polyline;
+one convolution feeding a huge dense layer was memorising pixels.
+
+## 10. Open questions
+
+1. **The benchmark is saturated again, one level up.** At 0.9956 there is
+   about 0.004 of headroom, under the 0.05 noise floor, so it can no longer
+   rank anything beyond this model. Ranking further architectures needs the
+   operating point re-hardened against the **deep** model, not the baseline.
+2. **Two confounds to name in any future result.** The baseline still
+   overfits somewhat at the calibrated budget — `best.pt` lands at epoch
+   17-19 whatever the budget, so 63% of the run at `min_steps=600` buys only
+   memorisation — and the class asymmetry, which depth has now largely
+   removed, was the thing the gate bound on. A model can win on either
+   without separating shapes better.
