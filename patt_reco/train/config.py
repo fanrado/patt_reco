@@ -21,6 +21,7 @@ class ModelConfig:
     pool: int = 4
     hidden: int = 64
     dropout: float = 0.0      # 0.0: the baseline carries no hidden regularisation
+    n_blocks: int = 1         # 1 is the minimal baseline; k stacks k conv/pool blocks
 
 
 @dataclass(frozen=True)
