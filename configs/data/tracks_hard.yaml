@@ -7,18 +7,24 @@
 # that resemble SOME tracks and not others -- overlap, rather than the two
 # classes trading identities.
 #
-# MEASURED at this point, paired with showers_hard.yaml: baseline test
-# accuracy 0.8325, ROC-AUC 0.9289, 335 wrong of 2000 -- inside the 0.75-0.95
-# target band. The small training set is part of the operating point: the
-# corrected axis alone still saturates at 4000/class (1.0000), so n_train is
-# 100 while n_val and n_test stay large to keep the metric precise. The
-# benchmark therefore measures shape ambiguity AND sample efficiency; errors
-# run in both directions at low confidence, so the ambiguity is real.
+# BASELINE, paired with showers_hard.yaml, over FIVE seeds:
+#   mean accuracy 0.8910 (sd 0.0179), mean ROC-AUC 0.9257, spread 0.0485
+#   mean recall: track 0.8220, shower 0.9600
+# Inside the 0.75-0.95 target band. The small training set is part of the
+# operating point: the corrected axis alone still saturates at 4000/class
+# (1.0000), so n_train is 100 while n_val and n_test stay large to keep the
+# metric precise. The benchmark therefore measures shape ambiguity AND sample
+# efficiency; errors run in both directions, so the ambiguity is real.
 #
-# Why 100 and not 250: at n_train=250 the baseline scores 0.9015, sitting
-# directly on the 90% acceptance threshold, where run-to-run noise alone would
-# flip a PASS/FAIL verdict and a better model would have no headroom. 0.8325
-# leaves about seven points to win.
+# SUPERSEDED: the earlier single-seed 0.8325 / AUC 0.9289 / 335-of-2000 was
+# measured before the training-budget fix, when training was bimodal -- half
+# of all seeds collapsed to constant-class prediction and 0.8325 came from a
+# run that happened to converge. Single-seed numbers are not used for this
+# benchmark any more.
+#
+# Why n_train=100 and not 250: at 250 the baseline sits on the 90% acceptance
+# threshold, where run-to-run noise alone would flip a PASS/FAIL verdict and a
+# better model would have no headroom.
 #
 # SUPERSEDED: the earlier 0.9995 figure came from the inverted axis, which
 # raised this file's curvature floor to 0.5 and made curvature alone decisive.
