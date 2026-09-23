@@ -1,0 +1,33 @@
+# The baseline training run: the minimal one-conv classifier on the full
+# tracks-vs-showers set. Everything later is measured against this.
+
+# The dense layer dominates the parameter count, and `pool` is the only knob
+# that controls it -- the flattened width scales as 1/pool**2. At 128x128 with
+# 16 filters: pool 2 ~ 4.2 M parameters, pool 4 ~ 1.0 M, pool 8 ~ 0.26 M.
+model:
+  n_filters: 16
+  kernel_size: 3
+  pool: 4
+  hidden: 64
+  dropout: 0.0        # the baseline carries no hidden regularisation
+
+# The directory scripts/make_dataset.py wrote.
+data:
+  root: data/tracks_vs_showers
+  batch_size: 64
+  num_workers: 4
+
+# AdamW with a cosine schedule over the whole run; no warmup.
+optim:
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  epochs: 20
+  grad_clip: 1.0
+
+# Each run writes runs/<timestamp>_<name>/ with config, environment, metrics
+# and checkpoints.
+run:
+  out_dir: runs
+  name: base
+  seed: 0
+  log_every: 20
