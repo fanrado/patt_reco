@@ -1,8 +1,8 @@
-"""The 3D fiducial volume objects are generated in.
+"""The 3D region objects are generated in.
 
-The volume is *derived from the readout* rather than configured independently,
-so that whatever pitch/tick size an event samples, the generated objects still
-land on the wire planes. See `patt_reco.detector.readout.Readout.volume`.
+A plain axis-aligned box, configured directly rather than derived from anything
+else. It bounds where an object may start and how far it may run before the
+rasteriser projects it to an image.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import numpy as np
 
 @dataclass(frozen=True)
 class Volume:
-    """Axis-aligned box. `x` is the drift coordinate, `y`/`z` are transverse."""
+    """Axis-aligned box. `x`, `y` and `z` are just axes; none is special."""
 
     xlo: float
     xhi: float
@@ -21,6 +21,12 @@ class Volume:
     yhi: float
     zlo: float
     zhi: float
+
+    @classmethod
+    def cube(cls, size: float = 1.0) -> "Volume":
+        """Cube of side `size` centred on the origin -- the default box."""
+        half = 0.5 * float(size)
+        return cls(-half, half, -half, half, -half, half)
 
     @property
     def lo(self) -> np.ndarray:
