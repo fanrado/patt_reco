@@ -1,0 +1,36 @@
+# Track side of the benchmark operating point (patt_reco-fv3).
+#
+# PROVENANCE. These values are difficulty d=1.0 of the overlap sweep in
+# scripts/sweep.py: curvature's FLOOR is raised off 0.0 so the set contains no
+# perfectly straight lines, which would otherwise be a giveaway feature with
+# no counterpart on the shower side.
+#
+# MEASURED at d=1.0, paired with showers_hard.yaml: baseline test accuracy
+# 0.9995, ROC-AUC 1.0000 (2000 test images) at the split counts below. That is
+# ABOVE the 0.75-0.95 target band. The sweep found the overlap axis alone
+# cannot reach the band -- accuracy never drops below 0.999 anywhere in
+# d=0..1. Reaching the band additionally needs a smaller training set:
+# measured at d=1.0, n_train=100 per class gives 0.9035 and n_train=250 gives
+# 0.9460, against 0.9965 at 500 and 0.9985 at 1000.
+# The split counts here are left as tracks.yaml has them, per the step that
+# created this file; override with --set n_train=100 to sit inside the band.
+name: tracks_hard
+kind: track
+label: 0
+seed: 3001
+
+n_train: 4000
+n_val: 1000
+n_test: 1000
+
+track:
+  length: [0.5, 1.0]
+  curvature: [0.5, 3.0]    # floor raised off 0.0: no straight-line giveaway
+  step: 0.002
+  value: 1.0
+
+render:
+  height: 128
+  width: 128
+  margin: 0.08
+  view: [0.0, 0.0, 1.0]
