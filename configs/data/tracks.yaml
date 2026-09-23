@@ -1,0 +1,26 @@
+# The line class: one track per image, straight through to clearly curved.
+#
+# Objects are generated in a unit box and the renderer fits each one to the
+# frame, so `length` matters mainly through `curvature * length` -- the total
+# angle the arc turns through. The ranges below span a straight line (0 rad)
+# up to roughly 2 rad of bend.
+name: tracks
+kind: track
+label: 0
+seed: 1001
+
+n_train: 4000
+n_val: 1000
+n_test: 1000
+
+track:
+  length: [0.5, 1.0]
+  curvature: [0.0, 2.2]    # 1/radius; 0.0 is perfectly straight
+  step: 0.002              # ~250-500 points, dense enough for a solid line
+  value: 1.0               # constant: a track carries no intensity pattern
+
+render:
+  height: 128
+  width: 128
+  margin: 0.08
+  view: [0.0, 0.0, 1.0]
