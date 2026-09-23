@@ -17,6 +17,11 @@ dist/
 /previews/
 /runs/
 
+# regenerated artefacts: the development-log presentation embeds PNGs, and
+# sweep runs write whole datasets, run directories and plots
+/presentations/
+/sweeps/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
