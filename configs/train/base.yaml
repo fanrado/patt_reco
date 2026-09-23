@@ -21,7 +21,10 @@ data:
 optim:
   lr: 1.0e-3
   weight_decay: 1.0e-4
-  epochs: 20
+  epochs: 8            # measured, not guessed: in the Phase 3/Step 1 sweep the
+                       # hardest level (d=1.0) first hit its best validation
+                       # accuracy at epoch 5 (0-indexed); easier levels plateaued
+                       # at epoch 0-2. 8 leaves ~3 epochs of margin.
   grad_clip: 1.0
 
 # Each run writes runs/<timestamp>_<name>/ with config, environment, metrics
