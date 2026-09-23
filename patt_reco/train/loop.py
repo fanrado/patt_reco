@@ -7,6 +7,8 @@ buy anything.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import torch
 from torch import nn
@@ -31,9 +33,27 @@ class Trainer:
             self.model.parameters(), lr=cfg.optim.lr,
             weight_decay=cfg.optim.weight_decay)
 
-        total_steps = max(1, cfg.optim.epochs * max(1, len(train_loader)))
+        # An epoch count does not transfer across dataset sizes, so min_steps
+        # can extend the run. The schedule must span the run that actually
+        # happens, not the one the config nominally asked for -- annealing over
+        # the nominal length would decay the lr to zero mid-run and reintroduce
+        # the same under-training bug in a new form.
+        steps_per_epoch = max(1, len(train_loader))
+        self.epochs = cfg.optim.epochs
+        if cfg.optim.min_steps > 0:
+            needed = math.ceil(cfg.optim.min_steps / steps_per_epoch)
+            self.epochs = max(self.epochs, needed)
+
+        total_steps = max(1, self.epochs * steps_per_epoch)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, T_max=total_steps)
+
+        print(f"budget: {steps_per_epoch} steps/epoch x {self.epochs} epochs "
+              f"= {total_steps} steps"
+              + (f"  (configured {cfg.optim.epochs} epochs"
+                 f" = {cfg.optim.epochs * steps_per_epoch} steps, extended to meet"
+                 f" min_steps={cfg.optim.min_steps})"
+                 if self.epochs != cfg.optim.epochs else ""))
 
     # -- one epoch ---------------------------------------------------------
     def _train_epoch(self, epoch: int) -> float:
@@ -92,7 +112,7 @@ class Trainer:
         """Run every epoch, checkpointing on the best validation accuracy."""
         best_acc = -1.0
 
-        for epoch in range(self.cfg.optim.epochs):
+        for epoch in range(self.epochs):
             train_loss = self._train_epoch(epoch)
             val_loss, y_true, y_pred, scores = self.evaluate(self.val_loader)
             val_acc = accuracy(y_true, y_pred)
