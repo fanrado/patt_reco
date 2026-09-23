@@ -76,7 +76,8 @@ def main() -> None:
     height, width = train_set.images.shape[1:]
     m = cfg.model
     model = CNN(height, width, n_filters=m.n_filters, kernel_size=m.kernel_size,
-                pool=m.pool, hidden=m.hidden, dropout=m.dropout)
+                pool=m.pool, hidden=m.hidden, dropout=m.dropout,
+                n_blocks=m.n_blocks)
     print(f"data:   {len(train_set)} train, {len(val_set)} val, {height}x{width}")
     print(f"model:  {model.n_parameters():,} parameters")
 

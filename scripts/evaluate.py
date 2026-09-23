@@ -30,7 +30,7 @@ def load_model(path: Path):
     m = checkpoint["config"].model
     model = CNN(checkpoint["height"], checkpoint["width"],
                 n_filters=m.n_filters, kernel_size=m.kernel_size, pool=m.pool,
-                hidden=m.hidden, dropout=m.dropout)
+                hidden=m.hidden, dropout=m.dropout, n_blocks=m.n_blocks)
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     return model
