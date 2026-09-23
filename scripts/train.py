@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 
 from patt_reco.cliutil import apply_overrides
 from patt_reco.dataset.torch_dataset import ImageDataset
-from patt_reco.models import CNN
+from patt_reco.models import build_model
 from patt_reco.train import Run, Trainer, load_train_yaml
 
 
@@ -74,10 +74,7 @@ def main() -> None:
                             num_workers=cfg.data.num_workers)
 
     height, width = train_set.images.shape[1:]
-    m = cfg.model
-    model = CNN(height, width, n_filters=m.n_filters, kernel_size=m.kernel_size,
-                pool=m.pool, hidden=m.hidden, dropout=m.dropout,
-                n_blocks=m.n_blocks)
+    model = build_model(cfg.model, height, width)
     print(f"data:   {len(train_set)} train, {len(val_set)} val, {height}x{width}")
     print(f"model:  {model.n_parameters():,} parameters")
 
